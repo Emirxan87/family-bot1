@@ -2,7 +2,7 @@ import logging
 import random
 import sqlite3
 
-from telegram import Update
+from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -11,7 +11,6 @@ from telegram.ext import (
     filters,
 )
 
-# ===== ВСТАВЬ СЮДА СВОЙ ТОКЕН =====
 TOKEN = "7925302773:AAHoe8mSYSVtNYL24qElXa9AcI9hI8YwsAA"
 
 logging.basicConfig(
@@ -19,7 +18,6 @@ logging.basicConfig(
     level=logging.INFO,
 )
 
-# ===== БАЗА ДАННЫХ =====
 conn = sqlite3.connect("family.db", check_same_thread=False)
 cursor = conn.cursor()
 
@@ -59,7 +57,17 @@ CREATE TABLE IF NOT EXISTS expenses (
 conn.commit()
 
 
-# ===== ВСПОМОГАТЕЛЬНЫЕ =====
+def get_main_keyboard():
+    return ReplyKeyboardMarkup(
+        [
+            ["📋 Покупки", "💸 Расход"],
+            ["👨‍👩‍👧 Семья", "💰 Итого"],
+            ["📖 Расходы", "ℹ️ Помощь"],
+        ],
+        resize_keyboard=True
+    )
+
+
 def get_user_family_id(telegram_id: int):
     cursor.execute("SELECT family_id FROM users WHERE telegram_id=?", (telegram_id,))
     row = cursor.fetchone()
@@ -84,7 +92,6 @@ def parse_amount(text: str):
     return amount, description
 
 
-# ===== КОМАНДЫ =====
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
     name = update.effective_user.first_name or "Участник"
@@ -94,16 +101,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if user:
         await update.message.reply_text(
-            "Вы уже в семье 👍\n\n"
-            "/family — участники\n"
-            "/list — покупки\n"
-            "/expenses — расходы\n"
-            "/total — сумма\n"
+            "Вы уже в семье 👍\n\nВыберите действие в меню ниже.",
+            reply_markup=get_main_keyboard()
         )
         return
 
     code = str(random.randint(1000, 9999))
-
     while True:
         cursor.execute("SELECT id FROM families WHERE code=?", (code,))
         if not cursor.fetchone():
@@ -117,36 +120,45 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "INSERT INTO users (telegram_id, family_id, name, role) VALUES (?,?,?,?)",
         (telegram_id, family_id, name, "parent")
     )
-
     conn.commit()
 
     await update.message.reply_text(
         f"Семья создана 👨‍👩‍👧\n\n"
         f"Код семьи: {code}\n\n"
-        f"Пусть другие напишут:\n"
-        f"/join {code}"
+        f"Пусть другие участники напишут:\n"
+        f"/join {code}",
+        reply_markup=get_main_keyboard()
     )
 
 
 async def join(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("Напиши: /join 1234")
+        await update.message.reply_text(
+            "Напиши так: /join 1234",
+            reply_markup=get_main_keyboard()
+        )
         return
 
     telegram_id = update.effective_user.id
     name = update.effective_user.first_name or "Участник"
-    code = context.args[0]
+    code = context.args[0].strip()
 
     cursor.execute("SELECT family_id FROM users WHERE telegram_id=?", (telegram_id,))
     if cursor.fetchone():
-        await update.message.reply_text("Ты уже в семье 👍")
+        await update.message.reply_text(
+            "Ты уже в семье 👍",
+            reply_markup=get_main_keyboard()
+        )
         return
 
     cursor.execute("SELECT id FROM families WHERE code=?", (code,))
     fam = cursor.fetchone()
 
     if not fam:
-        await update.message.reply_text("Семья не найдена")
+        await update.message.reply_text(
+            "Семья не найдена",
+            reply_markup=get_main_keyboard()
+        )
         return
 
     family_id = fam[0]
@@ -155,10 +167,12 @@ async def join(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "INSERT INTO users (telegram_id, family_id, name, role) VALUES (?,?,?,?)",
         (telegram_id, family_id, name, "member")
     )
-
     conn.commit()
 
-    await update.message.reply_text("Ты присоединился к семье 👨‍👩‍👧")
+    await update.message.reply_text(
+        "Ты присоединился к семье 👨‍👩‍👧",
+        reply_markup=get_main_keyboard()
+    )
 
 
 async def family(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -166,67 +180,89 @@ async def family(update: Update, context: ContextTypes.DEFAULT_TYPE):
     family_id = get_user_family_id(telegram_id)
 
     if not family_id:
-        await update.message.reply_text("Сначала /start")
+        await update.message.reply_text(
+            "Сначала нажми /start",
+            reply_markup=get_main_keyboard()
+        )
         return
 
     cursor.execute("SELECT name, role FROM users WHERE family_id=?", (family_id,))
     members = cursor.fetchall()
 
-    text = "Семья:\n\n"
+    text = "👨‍👩‍👧 Семья:\n\n"
     for name, role in members:
-        text += f"{name} — {role}\n"
+        role_text = "родитель" if role == "parent" else "участник"
+        text += f"• {name} — {role_text}\n"
 
-    await update.message.reply_text(text)
+    await update.message.reply_text(text, reply_markup=get_main_keyboard())
 
 
 async def add_item(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
-    text = update.message.text.strip()
+    text = (update.message.text or "").strip()
 
     family_id = get_user_family_id(telegram_id)
-
     if not family_id:
-        await update.message.reply_text("Сначала /start")
+        await update.message.reply_text(
+            "Сначала нажми /start",
+            reply_markup=get_main_keyboard()
+        )
         return
 
     cursor.execute(
         "INSERT INTO shopping (family_id, item) VALUES (?,?)",
         (family_id, text)
     )
-
     conn.commit()
 
-    await update.message.reply_text(f"Добавил: {text}")
+    await update.message.reply_text(
+        f"Добавил в покупки: {text}",
+        reply_markup=get_main_keyboard()
+    )
 
 
 async def show_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
     family_id = get_user_family_id(telegram_id)
 
+    if not family_id:
+        await update.message.reply_text(
+            "Сначала нажми /start",
+            reply_markup=get_main_keyboard()
+        )
+        return
+
     cursor.execute(
         "SELECT item FROM shopping WHERE family_id=? ORDER BY id DESC",
         (family_id,)
     )
-
     items = cursor.fetchall()
 
     if not items:
-        await update.message.reply_text("Список пуст")
+        await update.message.reply_text(
+            "Список покупок пуст",
+            reply_markup=get_main_keyboard()
+        )
         return
 
-    text = "Покупки:\n\n"
-
+    text = "📋 Покупки:\n\n"
     for item in items:
         text += f"• {item[0]}\n"
 
-    await update.message.reply_text(text)
+    await update.message.reply_text(text, reply_markup=get_main_keyboard())
 
 
 async def add_expense(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
-    text = update.message.text.strip()
+    text = (update.message.text or "").strip()
 
     family_id = get_user_family_id(telegram_id)
+    if not family_id:
+        await update.message.reply_text(
+            "Сначала нажми /start",
+            reply_markup=get_main_keyboard()
+        )
+        return
 
     amount, description = parse_amount(text)
 
@@ -238,11 +274,11 @@ async def add_expense(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "INSERT INTO expenses (family_id, amount, description) VALUES (?,?,?)",
         (family_id, amount, description)
     )
-
     conn.commit()
 
     await update.message.reply_text(
-        f"Расход: {amount} — {description}"
+        f"Расход добавлен: {amount:.2f} — {description}",
+        reply_markup=get_main_keyboard()
     )
 
 
@@ -250,42 +286,109 @@ async def show_expenses(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
     family_id = get_user_family_id(telegram_id)
 
+    if not family_id:
+        await update.message.reply_text(
+            "Сначала нажми /start",
+            reply_markup=get_main_keyboard()
+        )
+        return
+
     cursor.execute(
         "SELECT amount, description FROM expenses WHERE family_id=? ORDER BY id DESC LIMIT 10",
         (family_id,)
     )
-
     rows = cursor.fetchall()
 
     if not rows:
-        await update.message.reply_text("Расходов нет")
+        await update.message.reply_text(
+            "Расходов нет",
+            reply_markup=get_main_keyboard()
+        )
         return
 
-    text = "Последние расходы:\n\n"
-
+    text = "📖 Последние расходы:\n\n"
     for amount, desc in rows:
-        text += f"• {amount} — {desc}\n"
+        text += f"• {amount:.2f} — {desc}\n"
 
-    await update.message.reply_text(text)
+    await update.message.reply_text(text, reply_markup=get_main_keyboard())
 
 
 async def total(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
     family_id = get_user_family_id(telegram_id)
 
+    if not family_id:
+        await update.message.reply_text(
+            "Сначала нажми /start",
+            reply_markup=get_main_keyboard()
+        )
+        return
+
     cursor.execute(
         "SELECT SUM(amount) FROM expenses WHERE family_id=?",
         (family_id,)
     )
-
     total_sum = cursor.fetchone()[0] or 0
 
-    await update.message.reply_text(f"Всего потрачено: {total_sum}")
+    await update.message.reply_text(
+        f"💰 Всего потрачено: {total_sum:.2f}",
+        reply_markup=get_main_keyboard()
+    )
 
 
-# ===== ЗАПУСК =====
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (
+        "ℹ️ Как пользоваться ботом:\n\n"
+        "1. Нажми /start\n"
+        "2. Чтобы добавить участника семьи, дай ему код и пусть он напишет /join 1234\n"
+        "3. Чтобы добавить покупку, просто напиши:\n"
+        "молоко\n\n"
+        "4. Чтобы добавить расход, напиши:\n"
+        "250 молоко\n\n"
+        "Кнопки меню:\n"
+        "📋 Покупки — список покупок\n"
+        "📖 Расходы — последние расходы\n"
+        "💰 Итого — общая сумма\n"
+        "👨‍👩‍👧 Семья — участники семьи"
+    )
+    await update.message.reply_text(text, reply_markup=get_main_keyboard())
+
+
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (update.message.text or "").strip()
+
+    if text == "📋 Покупки":
+        await show_list(update, context)
+        return
+
+    if text == "💸 Расход":
+        await update.message.reply_text(
+            "Напиши расход так:\n250 продукты",
+            reply_markup=get_main_keyboard()
+        )
+        return
+
+    if text == "👨‍👩‍👧 Семья":
+        await family(update, context)
+        return
+
+    if text == "💰 Итого":
+        await total(update, context)
+        return
+
+    if text == "📖 Расходы":
+        await show_expenses(update, context)
+        return
+
+    if text == "ℹ️ Помощь":
+        await help_command(update, context)
+        return
+
+    await add_expense(update, context)
+
+
 def main():
-    if "PASTE_YOUR_TELEGRAM_BOT_TOKEN_HERE" in TOKEN:
+    if "7925302773:AAHoe8mSYSVtNYL24qElXa9AcI9hI8YwsAA" in TOKEN:
         raise ValueError("Вставь свой токен Telegram бота в переменную TOKEN")
 
     app = ApplicationBuilder().token(TOKEN).build()
@@ -296,8 +399,9 @@ def main():
     app.add_handler(CommandHandler("list", show_list))
     app.add_handler(CommandHandler("expenses", show_expenses))
     app.add_handler(CommandHandler("total", total))
+    app.add_handler(CommandHandler("help", help_command))
 
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, add_expense))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, button_handler))
 
     print("Бот запущен")
     app.run_polling()
