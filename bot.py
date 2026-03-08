@@ -45,13 +45,16 @@ from handlers.calendar import (
     show_family_day,
 )
 
-# Берём токен из Railway Variables / переменных окружения
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
 )
+
+
+def normalize_text(value: str) -> str:
+    return (value or "").strip()
 
 
 async def unknown_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -62,9 +65,9 @@ async def unknown_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (update.message.text or "").strip()
+    text = normalize_text(update.message.text)
 
-    # Сначала отрабатываем пошаговые сценарии
+    # Пошаговые сценарии — сначала они
     if await handle_shopping_section_choice(update, context):
         return
 
@@ -96,7 +99,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # Главное меню
-    if text == "🛒 Что купить?":
+    if text == "Что купить?":
         await show_all_shopping(update, context)
         return
 
@@ -104,15 +107,15 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await start_add_shopping(update, context)
         return
 
-    if text == "🏬 Магазин":
+    if text == "Магазин":
         await show_store_view(update, context)
         return
 
-    if text == "💊 Аптека":
+    if text == "Аптека":
         await show_pharmacy_view(update, context)
         return
 
-    if text == "🛍 Онлайн":
+    if text == "Онлайн":
         await show_online_view(update, context)
         return
 
@@ -120,31 +123,31 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await start_mark_done(update, context)
         return
 
-    if text == "🧹 Очистить купленное":
+    if text == "Очистить купленное":
         await start_clear_done(update, context)
         return
 
-    if text == "💸 Расход":
+    if text == "Расход":
         await start_expense(update, context)
         return
 
-    if text == "📋 Расходы":
+    if text == "Расходы":
         await show_expenses(update, context)
         return
 
-    if text == "📊 Статистика":
+    if text == "Статистика":
         await stats(update, context)
         return
 
-    if text == "💰 Итого":
+    if text == "Итого":
         await total(update, context)
         return
 
-    if text == "📅 Мой день":
+    if text == "Мой день":
         await show_my_day(update, context)
         return
 
-    if text == "👨‍👩‍👧‍👦 День семьи":
+    if text == "День семьи":
         await show_family_day(update, context)
         return
 
@@ -152,7 +155,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await start_add_event(update, context)
         return
 
-    if text == "👨‍👩‍👧‍👦 Семья":
+    if text == "Семья":
         await family(update, context)
         return
 
@@ -166,24 +169,26 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     if not BOT_TOKEN:
         raise RuntimeError(
-            "BOT_TOKEN не найден. Добавь переменную BOT_TOKEN в Railway Variables."
+            "Не найден BOT_TOKEN. Добавь BOT_TOKEN в Railway → Variables."
         )
 
     init_db()
 
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    application = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("join", join))
-    app.add_handler(CommandHandler("family", family))
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("expenses", show_expenses))
-    app.add_handler(CommandHandler("total", total))
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("join", join))
+    application.add_handler(CommandHandler("family", family))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("expenses", show_expenses))
+    application.add_handler(CommandHandler("total", total))
 
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
+    application.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler)
+    )
 
     print("Бот запущен")
-    app.run_polling()
+    application.run_polling()
 
 
 if __name__ == "__main__":
