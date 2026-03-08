@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 
 from telegram import Update
 from telegram.ext import (
@@ -58,6 +59,15 @@ def normalize_text(value: str) -> str:
     return (value or "").strip()
 
 
+def normalize_command_text(value: str) -> str:
+    text = normalize_text(value).lower()
+
+    text = re.sub(r"^[^\wа-яё]+", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s+", " ", text)
+
+    return text.strip()
+
+
 async def unknown_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Я не понял, что нужно сделать.\n\nВыбери действие в меню.",
@@ -66,7 +76,8 @@ async def unknown_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = normalize_text(update.message.text)
+    raw_text = normalize_text(update.message.text)
+    text = normalize_command_text(raw_text)
 
     # Пошаговые сценарии
     if await handle_shopping_section_choice(update, context):
@@ -100,67 +111,67 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # Главное меню
-    if text == "Что купить?":
+    if text == "что купить?":
         await show_all_shopping(update, context)
         return
 
-    if text == "➕ Добавить покупки":
+    if text == "добавить покупки":
         await start_add_shopping(update, context)
         return
 
-    if text == "Магазин":
+    if text == "магазин":
         await show_store_view(update, context)
         return
 
-    if text == "Аптека":
+    if text == "аптека":
         await show_pharmacy_view(update, context)
         return
 
-    if text == "Онлайн":
+    if text == "онлайн":
         await show_online_view(update, context)
         return
 
-    if text == "✅ Куплено":
+    if text == "куплено":
         await start_mark_done(update, context)
         return
 
-    if text == "Очистить купленное":
+    if text == "очистить купленное":
         await start_clear_done(update, context)
         return
 
-    if text == "Расход":
+    if text == "расход":
         await start_expense(update, context)
         return
 
-    if text == "Расходы":
+    if text == "расходы":
         await show_expenses(update, context)
         return
 
-    if text == "Статистика":
+    if text == "статистика":
         await stats(update, context)
         return
 
-    if text == "Итого":
+    if text == "итого":
         await total(update, context)
         return
 
-    if text == "Мой день":
+    if text == "мой день":
         await show_my_day(update, context)
         return
 
-    if text == "День семьи":
+    if text == "день семьи":
         await show_family_day(update, context)
         return
 
-    if text == "➕ Событие":
+    if text == "событие":
         await start_add_event(update, context)
         return
 
-    if text == "Семья":
+    if text == "семья":
         await family(update, context)
         return
 
-    if text == "ℹ️ Помощь":
+    if text == "помощь":
         await help_command(update, context)
         return
 
