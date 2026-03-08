@@ -13,6 +13,35 @@ from keyboards import (
 )
 
 
+PHARMACY_KEYWORDS = {
+    "нурофен", "ибупрофен", "парацетамол", "цитрамон", "лекарство",
+    "лекарства", "таблетки", "сироп", "спрей", "капли", "витамины",
+    "мазь", "бинт", "пластырь", "аптека", "омепразол", "но-шпа",
+    "ношпа", "аспирин", "анальгин",
+}
+
+HOUSEHOLD_KEYWORDS = {
+    "порошок", "кондиционер", "отбеливатель", "бумага", "туалетная бумага",
+    "салфетки", "губка", "губки", "мыло", "шампунь", "гель", "зубная паста",
+    "щетка", "щётка", "средство", "чистящее", "моющее", "мешки", "пакеты",
+    "фейри", "fairy",
+}
+
+ONLINE_KEYWORDS = {
+    "ozon", "wb", "wildberries", "вайлдберриз", "алиэкспресс", "aliexpress",
+    "amazon", "яндекс маркет", "маркетплейс",
+}
+
+EXPENSE_PREFIXES = (
+    "трата ",
+    "расход ",
+    "потратил ",
+    "потратила ",
+    "заплатил ",
+    "заплатила ",
+)
+
+
 def clean_item_text(text: str) -> str:
     text = text.strip()
     text = re.sub(r"^[\-\•\*\–\—]+\s*", "", text)
@@ -81,6 +110,58 @@ def clear_shopping_modes(context: ContextTypes.DEFAULT_TYPE):
         "waiting_for_clear_done_scope",
     ]:
         context.user_data.pop(key, None)
+
+
+def is_probably_expense_text(text: str) -> bool:
+    lower_text = text.strip().lower()
+    return any(lower_text.startswith(prefix) for prefix in EXPENSE_PREFIXES)
+
+
+def is_service_message(text: str) -> bool:
+    normalized = text.strip().lower()
+
+    blocked_exact = {
+        "что купить?",
+        "➕ добавить покупки",
+        "магазин",
+        "аптека",
+        "онлайн",
+        "✅ куплено",
+        "очистить купленное",
+        "расход",
+        "расходы",
+        "статистика",
+        "итого",
+        "мой день",
+        "день семьи",
+        "➕ событие",
+        "семья",
+        "ℹ️ помощь",
+        "⬅️ отмена",
+        "/start",
+        "/help",
+        "/family",
+        "/join",
+        "/expenses",
+        "/total",
+    }
+
+    return normalized in blocked_exact or normalized.startswith("/")
+
+
+def detect_section_for_item(item: str) -> str:
+    text = item.lower()
+
+    if any(word in text for word in ONLINE_KEYWORDS):
+        return "📦 Маркетплейс"
+
+    if any(word in text for word in PHARMACY_KEYWORDS):
+        return "💊 Аптека"
+
+    if any(word in text for word in HOUSEHOLD_KEYWORDS):
+        return "🧴 Хозтовары"
+
+    return "🥦 Продукты"
 
 
 async def show_all_shopping(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -162,7 +243,12 @@ async def show_store_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def show_section(update: Update, context: ContextTypes.DEFAULT_TYPE, section_name: str, title: str):
+async def show_section(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    section_name: str,
+    title: str
+):
     telegram_id = update.effective_user.id
     family_id = get_user_family_id(telegram_id)
 
@@ -325,6 +411,96 @@ async def handle_shopping_items_input(update: Update, context: ContextTypes.DEFA
         response.append("Уже были в списке:")
         for item in skipped:
             response.append(f"• {item}")
+
+    await update.message.reply_text(
+        "\n".join(response).strip(),
+        reply_markup=get_main_keyboard()
+    )
+    return True
+
+
+async def handle_quick_shopping_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if any([
+        context.user_data.get("waiting_for_shopping_section"),
+        context.user_data.get("waiting_for_shopping_items"),
+        context.user_data.get("waiting_for_done_scope"),
+        context.user_data.get("waiting_for_clear_done_scope"),
+        context.user_data.get("waiting_for_expense_category"),
+        context.user_data.get("waiting_for_expense_input"),
+        context.user_data.get("waiting_for_event_date"),
+        context.user_data.get("waiting_for_event_start"),
+        context.user_data.get("waiting_for_event_end"),
+        context.user_data.get("waiting_for_event_title"),
+    ]):
+        return False
+
+    text = (update.message.text or "").strip()
+    if not text:
+        return False
+
+    if is_service_message(text):
+        return False
+
+    if is_probably_expense_text(text):
+        return False
+
+    items = split_shopping_items(text)
+    if not items:
+        return False
+
+    telegram_id = update.effective_user.id
+    family_id = get_user_family_id(telegram_id)
+    if not family_id:
+        return False
+
+    added_by_section = {}
+    skipped_by_section = {}
+
+    for item in items:
+        section = detect_section_for_item(item)
+        list_id = get_list_id(family_id, section)
+
+        cursor.execute(
+            "SELECT 1 FROM shopping_items WHERE list_id=? AND status='active' AND LOWER(TRIM(item))= ?",
+            (list_id, item.strip().lower())
+        )
+        exists = cursor.fetchone()
+
+        target = skipped_by_section if exists else added_by_section
+        target.setdefault(section, []).append(item)
+
+        if not exists:
+            cursor.execute(
+                "INSERT INTO shopping_items (list_id, item, status) VALUES (?, ?, 'active')",
+                (list_id, item)
+            )
+
+    if not added_by_section and not skipped_by_section:
+        return False
+
+    conn.commit()
+
+    response = ["🛒 Добавил в покупки:\n"]
+
+    for section in SHOPPING_LISTS:
+        section_items = added_by_section.get(section, [])
+        if not section_items:
+            continue
+        response.append(section)
+        for item in section_items:
+            response.append(f"• {item}")
+        response.append("")
+
+    if skipped_by_section:
+        response.append("Уже были в списке:")
+        for section in SHOPPING_LISTS:
+            section_items = skipped_by_section.get(section, [])
+            if not section_items:
+                continue
+            response.append(section)
+            for item in section_items:
+                response.append(f"• {item}")
+            response.append("")
 
     await update.message.reply_text(
         "\n".join(response).strip(),
