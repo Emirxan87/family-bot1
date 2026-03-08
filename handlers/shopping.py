@@ -90,6 +90,13 @@ def clean_item_text(text: str) -> str:
     return text.strip(" ,;.")
 
 
+def normalize_service_text(text: str) -> str:
+    value = (text or "").strip().lower()
+    value = re.sub(r"^[^\wа-яё]+", "", value, flags=re.IGNORECASE)
+    value = re.sub(r"\s+", " ", value)
+    return value.strip()
+
+
 def split_shopping_items(raw_text: str):
     text = raw_text.strip()
 
@@ -100,9 +107,6 @@ def split_shopping_items(raw_text: str):
     else:
         words = text.split()
 
-        # Если слов много, считаем это быстрым списком:
-        # "молоко сыр хлеб" -> 3 позиции
-        # Но "туалетная бумага" -> одна позиция
         if len(words) >= 3:
             parts = words
         else:
@@ -168,39 +172,26 @@ def is_probably_expense_text(text: str) -> bool:
 
 
 def is_service_message(text: str) -> bool:
-    normalized = text.strip().lower()
+    normalized = normalize_service_text(text)
 
     blocked_exact = {
         "что купить?",
-        "🛒 что купить?",
-        "➕ добавить покупки",
+        "добавить покупки",
         "магазин",
-        "🏬 магазин",
         "аптека",
-        "💊 аптека",
         "онлайн",
-        "🛍 онлайн",
-        "✅ куплено",
+        "куплено",
         "очистить купленное",
-        "🧹 очистить купленное",
         "расход",
-        "💸 расход",
         "расходы",
-        "📋 расходы",
         "статистика",
-        "📊 статистика",
         "итого",
-        "💰 итого",
         "мой день",
-        "📅 мой день",
         "день семьи",
-        "👨‍👩‍👧‍👦 день семьи",
-        "➕ событие",
+        "событие",
         "семья",
-        "👨‍👩‍👧‍👦 семья",
-        "ℹ️ помощь",
         "помощь",
-        "⬅️ отмена",
+        "отмена",
         "/start",
         "/help",
         "/family",
