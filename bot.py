@@ -388,7 +388,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
-    if "7925302773:AAHoe8mSYSVtNYL24qElXa9AcI9hI8YwsAA" in TOKEN:
+    if TOKEN == "PASTE_YOUR_TELEGRAM_BOT_TOKEN_HERE":
         raise ValueError("Вставь свой токен Telegram бота в переменную TOKEN")
 
     app = ApplicationBuilder().token(TOKEN).build()
