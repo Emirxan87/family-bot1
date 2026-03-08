@@ -1,11 +1,12 @@
 import logging
+import os
 
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
-    MessageHandler,
     ContextTypes,
+    MessageHandler,
     filters,
 )
 
@@ -44,7 +45,8 @@ from handlers.calendar import (
     show_family_day,
 )
 
-TOKEN = "7925302773:AAHoe8mSYSVtNYL24qElXa9AcI9hI8YwsAA"
+# Берём токен из Railway Variables / переменных окружения
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -54,15 +56,15 @@ logging.basicConfig(
 
 async def unknown_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Я не понял, что нужно сделать.\n\n"
-        "Выбери действие в меню.",
-        reply_markup=get_main_keyboard()
+        "Я не понял, что нужно сделать.\n\nВыбери действие в меню.",
+        reply_markup=get_main_keyboard(),
     )
 
 
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (update.message.text or "").strip()
 
+    # Сначала отрабатываем пошаговые сценарии
     if await handle_shopping_section_choice(update, context):
         return
 
@@ -93,6 +95,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if await handle_event_title(update, context):
         return
 
+    # Главное меню
     if text == "🛒 Что купить?":
         await show_all_shopping(update, context)
         return
@@ -101,7 +104,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await start_add_shopping(update, context)
         return
 
-    if text == "🏪 Магазин":
+    if text == "🏬 Магазин":
         await show_store_view(update, context)
         return
 
@@ -109,7 +112,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_pharmacy_view(update, context)
         return
 
-    if text == "📦 Онлайн":
+    if text == "🛍 Онлайн":
         await show_online_view(update, context)
         return
 
@@ -125,7 +128,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await start_expense(update, context)
         return
 
-    if text == "📖 Расходы":
+    if text == "📋 Расходы":
         await show_expenses(update, context)
         return
 
@@ -141,7 +144,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_my_day(update, context)
         return
 
-    if text == "👨‍👩‍👧 День семьи":
+    if text == "👨‍👩‍👧‍👦 День семьи":
         await show_family_day(update, context)
         return
 
@@ -149,7 +152,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await start_add_event(update, context)
         return
 
-    if text == "👨‍👩‍👧 Семья":
+    if text == "👨‍👩‍👧‍👦 Семья":
         await family(update, context)
         return
 
@@ -161,9 +164,14 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
+    if not BOT_TOKEN:
+        raise RuntimeError(
+            "BOT_TOKEN не найден. Добавь переменную BOT_TOKEN в Railway Variables."
+        )
+
     init_db()
 
-    app = ApplicationBuilder().token(TOKEN).build()
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("join", join))
