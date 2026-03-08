@@ -1,10 +1,16 @@
+import os
 import sqlite3
 
-conn = sqlite3.connect("family.db", check_same_thread=False)
+# путь к базе данных
+DB_PATH = os.getenv("DB_PATH", "/data/family.db")
+
+# подключение к базе
+conn = sqlite3.connect(DB_PATH, check_same_thread=False)
 cursor = conn.cursor()
 
 
 def init_db():
+
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS families (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -65,18 +71,31 @@ def init_db():
 
 
 def get_user_family_id(telegram_id: int):
-    cursor.execute("SELECT family_id FROM users WHERE telegram_id=?", (telegram_id,))
+
+    cursor.execute(
+        "SELECT family_id FROM users WHERE telegram_id=?",
+        (telegram_id,)
+    )
+
     row = cursor.fetchone()
+
     return row[0] if row else None
 
 
 def get_user_name(telegram_id: int):
-    cursor.execute("SELECT name FROM users WHERE telegram_id=?", (telegram_id,))
+
+    cursor.execute(
+        "SELECT name FROM users WHERE telegram_id=?",
+        (telegram_id,)
+    )
+
     row = cursor.fetchone()
+
     return row[0] if row else None
 
 
 def ensure_default_lists(family_id: int):
+
     default_lists = [
         "🥦 Продукты",
         "💊 Аптека",
@@ -86,11 +105,14 @@ def ensure_default_lists(family_id: int):
     ]
 
     for list_name in default_lists:
+
         cursor.execute(
             "SELECT id FROM shopping_lists WHERE family_id=? AND name=?",
             (family_id, list_name)
         )
+
         if not cursor.fetchone():
+
             cursor.execute(
                 "INSERT INTO shopping_lists (family_id, name) VALUES (?, ?)",
                 (family_id, list_name)
@@ -100,10 +122,14 @@ def ensure_default_lists(family_id: int):
 
 
 def get_list_id(family_id: int, list_name: str):
+
     ensure_default_lists(family_id)
+
     cursor.execute(
         "SELECT id FROM shopping_lists WHERE family_id=? AND name=?",
         (family_id, list_name)
     )
+
     row = cursor.fetchone()
+
     return row[0] if row else None
