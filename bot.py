@@ -1,25 +1,4 @@
-from telegram import Update
-from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, ContextTypes, filters
-import sqlite3
-import random
-
-TOKEN = "7925302773:AAHoe8mSYSVtNYL24qElXa9AcI9hI8YwsAA"
-
-conn = sqlite3.connect("family.db", check_same_thread=False)
-cursor = conn.cursor()
-
-# таблица семей
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS families (
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-code TEXT
-)
-""")
-
-# таблица пользователей
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS users (
-telegram_id INTEGER,
+elegram_id INTEGER,
 family_id INTEGER,
 name TEXT,
 role TEXT
@@ -289,5 +268,6 @@ app.add_handler(CommandHandler("expenses", show_expenses))
 app.add_handler(CommandHandler("total", total_expenses))
 
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, add_expense))
+
 
 app.run_polling()
