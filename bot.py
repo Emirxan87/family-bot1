@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS expenses (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     family_id INTEGER,
     amount REAL,
+    category TEXT,
     description TEXT
 )
 """)
@@ -57,16 +58,69 @@ CREATE TABLE IF NOT EXISTS expenses (
 conn.commit()
 
 
+def ensure_expenses_schema():
+    cursor.execute("PRAGMA table_info(expenses)")
+    columns = [row[1] for row in cursor.fetchall()]
+
+    if "category" not in columns:
+        cursor.execute("ALTER TABLE expenses ADD COLUMN category TEXT DEFAULT 'Другое'")
+        conn.commit()
+
+
+ensure_expenses_schema()
+
+
+CATEGORIES = [
+    "🍎 Еда",
+    "🚕 Транспорт",
+    "👶 Дети",
+    "🏠 Дом",
+    "💊 Здоровье",
+    "🎉 Развлечения",
+    "📦 Другое",
+]
+
+
 def get_main_keyboard():
     return ReplyKeyboardMarkup(
         [
             ["📋 Покупки", "💸 Расход"],
             ["👨‍👩‍👧 Семья", "💰 Итого"],
-            ["📖 Расходы", "ℹ️ Помощь"],
+            ["📖 Расходы", "📊 Статистика"],
             ["❌ Удалить покупку", "🗑 Удалить расход"],
+            ["ℹ️ Помощь"],
         ],
         resize_keyboard=True
     )
+
+
+def get_category_keyboard():
+    return ReplyKeyboardMarkup(
+        [
+            ["🍎 Еда", "🚕 Транспорт"],
+            ["👶 Дети", "🏠 Дом"],
+            ["💊 Здоровье", "🎉 Развлечения"],
+            ["📦 Другое"],
+            ["⬅️ Отмена"],
+        ],
+        resize_keyboard=True
+    )
+
+
+def normalize_category(text: str) -> str:
+    if text.startswith("🍎"):
+        return "Еда"
+    if text.startswith("🚕"):
+        return "Транспорт"
+    if text.startswith("👶"):
+        return "Дети"
+    if text.startswith("🏠"):
+        return "Дом"
+    if text.startswith("💊"):
+        return "Здоровье"
+    if text.startswith("🎉"):
+        return "Развлечения"
+    return "Другое"
 
 
 def get_user_family_id(telegram_id: int):
@@ -75,7 +129,7 @@ def get_user_family_id(telegram_id: int):
     return row[0] if row else None
 
 
-def parse_amount(text: str):
+def parse_amount_and_description(text: str):
     parts = text.strip().split()
     if len(parts) < 2:
         return None, None
@@ -253,36 +307,6 @@ async def show_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text, reply_markup=get_main_keyboard())
 
 
-async def add_expense(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    telegram_id = update.effective_user.id
-    text = (update.message.text or "").strip()
-
-    family_id = get_user_family_id(telegram_id)
-    if not family_id:
-        await update.message.reply_text(
-            "Сначала нажми /start",
-            reply_markup=get_main_keyboard()
-        )
-        return
-
-    amount, description = parse_amount(text)
-
-    if amount is None:
-        await add_item(update, context)
-        return
-
-    cursor.execute(
-        "INSERT INTO expenses (family_id, amount, description) VALUES (?,?,?)",
-        (family_id, amount, description)
-    )
-    conn.commit()
-
-    await update.message.reply_text(
-        f"Расход добавлен: {amount:.2f} — {description}",
-        reply_markup=get_main_keyboard()
-    )
-
-
 async def show_expenses(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
     family_id = get_user_family_id(telegram_id)
@@ -295,7 +319,7 @@ async def show_expenses(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     cursor.execute(
-        "SELECT amount, description FROM expenses WHERE family_id=? ORDER BY id DESC LIMIT 10",
+        "SELECT amount, category, description FROM expenses WHERE family_id=? ORDER BY id DESC LIMIT 10",
         (family_id,)
     )
     rows = cursor.fetchall()
@@ -308,8 +332,9 @@ async def show_expenses(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     text = "📖 Последние расходы:\n\n"
-    for i, (amount, desc) in enumerate(rows, start=1):
-        text += f"{i}. {amount:.2f} — {desc}\n"
+    for i, (amount, category, desc) in enumerate(rows, start=1):
+        category = category or "Другое"
+        text += f"{i}. {amount:.2f} — {category} — {desc}\n"
 
     await update.message.reply_text(text, reply_markup=get_main_keyboard())
 
@@ -337,6 +362,49 @@ async def total(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    telegram_id = update.effective_user.id
+    family_id = get_user_family_id(telegram_id)
+
+    if not family_id:
+        await update.message.reply_text(
+            "Сначала нажми /start",
+            reply_markup=get_main_keyboard()
+        )
+        return
+
+    cursor.execute(
+        """
+        SELECT category, SUM(amount)
+        FROM expenses
+        WHERE family_id=?
+        GROUP BY category
+        ORDER BY SUM(amount) DESC
+        """,
+        (family_id,)
+    )
+    rows = cursor.fetchall()
+
+    if not rows:
+        await update.message.reply_text(
+            "Пока нет данных для статистики",
+            reply_markup=get_main_keyboard()
+        )
+        return
+
+    text = "📊 Статистика по категориям:\n\n"
+    total_sum = 0
+
+    for category, amount in rows:
+        category = category or "Другое"
+        total_sum += amount or 0
+        text += f"• {category} — {amount:.2f}\n"
+
+    text += f"\n💰 Всего: {total_sum:.2f}"
+
+    await update.message.reply_text(text, reply_markup=get_main_keyboard())
+
+
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
         "ℹ️ Как пользоваться ботом:\n\n"
@@ -344,14 +412,11 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "2. Чтобы добавить участника семьи, дай ему код и пусть он напишет /join 1234\n"
         "3. Чтобы добавить покупку, просто напиши:\n"
         "молоко\n\n"
-        "4. Чтобы добавить расход, напиши:\n"
+        "4. Чтобы добавить расход, нажми кнопку 💸 Расход\n"
+        "5. Выбери категорию\n"
+        "6. Потом напиши сумму и описание:\n"
         "250 молоко\n\n"
-        "5. Чтобы удалить покупку, нажми:\n"
-        "❌ Удалить покупку\n"
-        "и потом отправь номер\n\n"
-        "6. Чтобы удалить расход, нажми:\n"
-        "🗑 Удалить расход\n"
-        "и потом отправь номер"
+        "7. Статистика покажет расходы по категориям"
     )
     await update.message.reply_text(text, reply_markup=get_main_keyboard())
 
@@ -393,7 +458,7 @@ async def start_delete_expense(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     cursor.execute(
-        "SELECT id, amount, description FROM expenses WHERE family_id=? ORDER BY id DESC LIMIT 10",
+        "SELECT id, amount, category, description FROM expenses WHERE family_id=? ORDER BY id DESC LIMIT 10",
         (family_id,)
     )
     rows = cursor.fetchall()
@@ -406,8 +471,9 @@ async def start_delete_expense(update: Update, context: ContextTypes.DEFAULT_TYP
     context.user_data["expense_ids"] = [row[0] for row in rows]
 
     text = "🗑 Выбери номер расхода для удаления:\n\n"
-    for i, (_, amount, desc) in enumerate(rows, start=1):
-        text += f"{i}. {amount:.2f} — {desc}\n"
+    for i, (_, amount, category, desc) in enumerate(rows, start=1):
+        category = category or "Другое"
+        text += f"{i}. {amount:.2f} — {category} — {desc}\n"
 
     await update.message.reply_text(text, reply_markup=get_main_keyboard())
 
@@ -456,6 +522,93 @@ async def handle_delete_number(update: Update, context: ContextTypes.DEFAULT_TYP
     return False
 
 
+async def handle_category_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (update.message.text or "").strip()
+
+    if text == "⬅️ Отмена":
+        context.user_data.pop("waiting_for_category", None)
+        context.user_data.pop("selected_category", None)
+        await update.message.reply_text(
+            "Действие отменено",
+            reply_markup=get_main_keyboard()
+        )
+        return True
+
+    if text in CATEGORIES:
+        category = normalize_category(text)
+        context.user_data["waiting_for_category"] = False
+        context.user_data["waiting_for_expense_input"] = True
+        context.user_data["selected_category"] = category
+
+        await update.message.reply_text(
+            f"Категория выбрана: {category}\n\nТеперь напиши сумму и описание.\nПример:\n250 молоко",
+            reply_markup=get_main_keyboard()
+        )
+        return True
+
+    if context.user_data.get("waiting_for_category"):
+        await update.message.reply_text(
+            "Выбери категорию кнопкой ниже",
+            reply_markup=get_category_keyboard()
+        )
+        return True
+
+    return False
+
+
+async def handle_expense_input_after_category(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.user_data.get("waiting_for_expense_input"):
+        return False
+
+    text = (update.message.text or "").strip()
+
+    if text == "⬅️ Отмена":
+        context.user_data.pop("waiting_for_expense_input", None)
+        context.user_data.pop("selected_category", None)
+        await update.message.reply_text(
+            "Действие отменено",
+            reply_markup=get_main_keyboard()
+        )
+        return True
+
+    amount, description = parse_amount_and_description(text)
+    if amount is None:
+        await update.message.reply_text(
+            "Неправильный формат.\nНапиши так:\n250 молоко",
+            reply_markup=get_main_keyboard()
+        )
+        return True
+
+    telegram_id = update.effective_user.id
+    family_id = get_user_family_id(telegram_id)
+
+    if not family_id:
+        context.user_data.pop("waiting_for_expense_input", None)
+        context.user_data.pop("selected_category", None)
+        await update.message.reply_text(
+            "Сначала нажми /start",
+            reply_markup=get_main_keyboard()
+        )
+        return True
+
+    category = context.user_data.get("selected_category", "Другое")
+
+    cursor.execute(
+        "INSERT INTO expenses (family_id, amount, category, description) VALUES (?,?,?,?)",
+        (family_id, amount, category, description)
+    )
+    conn.commit()
+
+    context.user_data.pop("waiting_for_expense_input", None)
+    context.user_data.pop("selected_category", None)
+
+    await update.message.reply_text(
+        f"Расход добавлен: {amount:.2f} — {category} — {description}",
+        reply_markup=get_main_keyboard()
+    )
+    return True
+
+
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (update.message.text or "").strip()
 
@@ -463,14 +616,26 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if handled_delete:
         return
 
+    handled_category = await handle_category_choice(update, context)
+    if handled_category:
+        return
+
+    handled_expense_input = await handle_expense_input_after_category(update, context)
+    if handled_expense_input:
+        return
+
     if text == "📋 Покупки":
         await show_list(update, context)
         return
 
     if text == "💸 Расход":
+        context.user_data["waiting_for_category"] = True
+        context.user_data.pop("waiting_for_expense_input", None)
+        context.user_data.pop("selected_category", None)
+
         await update.message.reply_text(
-            "Напиши расход так:\n250 продукты",
-            reply_markup=get_main_keyboard()
+            "Выбери категорию расхода:",
+            reply_markup=get_category_keyboard()
         )
         return
 
@@ -486,6 +651,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_expenses(update, context)
         return
 
+    if text == "📊 Статистика":
+        await stats(update, context)
+        return
+
     if text == "ℹ️ Помощь":
         await help_command(update, context)
         return
@@ -498,7 +667,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await start_delete_expense(update, context)
         return
 
-    await add_expense(update, context)
+    await add_item(update, context)
 
 
 def main():
