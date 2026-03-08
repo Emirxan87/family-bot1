@@ -63,6 +63,7 @@ def get_main_keyboard():
             ["📋 Покупки", "💸 Расход"],
             ["👨‍👩‍👧 Семья", "💰 Итого"],
             ["📖 Расходы", "ℹ️ Помощь"],
+            ["❌ Удалить покупку", "🗑 Удалить расход"],
         ],
         resize_keyboard=True
     )
@@ -246,8 +247,8 @@ async def show_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     text = "📋 Покупки:\n\n"
-    for item in items:
-        text += f"• {item[0]}\n"
+    for i, item in enumerate(items, start=1):
+        text += f"{i}. {item[0]}\n"
 
     await update.message.reply_text(text, reply_markup=get_main_keyboard())
 
@@ -307,8 +308,8 @@ async def show_expenses(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     text = "📖 Последние расходы:\n\n"
-    for amount, desc in rows:
-        text += f"• {amount:.2f} — {desc}\n"
+    for i, (amount, desc) in enumerate(rows, start=1):
+        text += f"{i}. {amount:.2f} — {desc}\n"
 
     await update.message.reply_text(text, reply_markup=get_main_keyboard())
 
@@ -345,17 +346,122 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "молоко\n\n"
         "4. Чтобы добавить расход, напиши:\n"
         "250 молоко\n\n"
-        "Кнопки меню:\n"
-        "📋 Покупки — список покупок\n"
-        "📖 Расходы — последние расходы\n"
-        "💰 Итого — общая сумма\n"
-        "👨‍👩‍👧 Семья — участники семьи"
+        "5. Чтобы удалить покупку, нажми:\n"
+        "❌ Удалить покупку\n"
+        "и потом отправь номер\n\n"
+        "6. Чтобы удалить расход, нажми:\n"
+        "🗑 Удалить расход\n"
+        "и потом отправь номер"
     )
     await update.message.reply_text(text, reply_markup=get_main_keyboard())
 
 
+async def start_delete_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    telegram_id = update.effective_user.id
+    family_id = get_user_family_id(telegram_id)
+
+    if not family_id:
+        await update.message.reply_text("Сначала нажми /start", reply_markup=get_main_keyboard())
+        return
+
+    cursor.execute(
+        "SELECT id, item FROM shopping WHERE family_id=? ORDER BY id DESC",
+        (family_id,)
+    )
+    items = cursor.fetchall()
+
+    if not items:
+        await update.message.reply_text("Список покупок пуст", reply_markup=get_main_keyboard())
+        return
+
+    context.user_data["delete_mode"] = "shopping"
+    context.user_data["shopping_ids"] = [row[0] for row in items]
+
+    text = "❌ Выбери номер покупки для удаления:\n\n"
+    for i, (_, item) in enumerate(items, start=1):
+        text += f"{i}. {item}\n"
+
+    await update.message.reply_text(text, reply_markup=get_main_keyboard())
+
+
+async def start_delete_expense(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    telegram_id = update.effective_user.id
+    family_id = get_user_family_id(telegram_id)
+
+    if not family_id:
+        await update.message.reply_text("Сначала нажми /start", reply_markup=get_main_keyboard())
+        return
+
+    cursor.execute(
+        "SELECT id, amount, description FROM expenses WHERE family_id=? ORDER BY id DESC LIMIT 10",
+        (family_id,)
+    )
+    rows = cursor.fetchall()
+
+    if not rows:
+        await update.message.reply_text("Расходов нет", reply_markup=get_main_keyboard())
+        return
+
+    context.user_data["delete_mode"] = "expenses"
+    context.user_data["expense_ids"] = [row[0] for row in rows]
+
+    text = "🗑 Выбери номер расхода для удаления:\n\n"
+    for i, (_, amount, desc) in enumerate(rows, start=1):
+        text += f"{i}. {amount:.2f} — {desc}\n"
+
+    await update.message.reply_text(text, reply_markup=get_main_keyboard())
+
+
+async def handle_delete_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (update.message.text or "").strip()
+
+    if not text.isdigit():
+        return False
+
+    number = int(text)
+    mode = context.user_data.get("delete_mode")
+
+    if mode == "shopping":
+        ids = context.user_data.get("shopping_ids", [])
+        if number < 1 or number > len(ids):
+            await update.message.reply_text("Неверный номер", reply_markup=get_main_keyboard())
+            return True
+
+        item_id = ids[number - 1]
+        cursor.execute("DELETE FROM shopping WHERE id=?", (item_id,))
+        conn.commit()
+
+        context.user_data.pop("delete_mode", None)
+        context.user_data.pop("shopping_ids", None)
+
+        await update.message.reply_text("Покупка удалена ✅", reply_markup=get_main_keyboard())
+        return True
+
+    if mode == "expenses":
+        ids = context.user_data.get("expense_ids", [])
+        if number < 1 or number > len(ids):
+            await update.message.reply_text("Неверный номер", reply_markup=get_main_keyboard())
+            return True
+
+        expense_id = ids[number - 1]
+        cursor.execute("DELETE FROM expenses WHERE id=?", (expense_id,))
+        conn.commit()
+
+        context.user_data.pop("delete_mode", None)
+        context.user_data.pop("expense_ids", None)
+
+        await update.message.reply_text("Расход удалён ✅", reply_markup=get_main_keyboard())
+        return True
+
+    return False
+
+
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (update.message.text or "").strip()
+
+    handled_delete = await handle_delete_number(update, context)
+    if handled_delete:
+        return
 
     if text == "📋 Покупки":
         await show_list(update, context)
@@ -384,13 +490,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await help_command(update, context)
         return
 
+    if text == "❌ Удалить покупку":
+        await start_delete_purchase(update, context)
+        return
+
+    if text == "🗑 Удалить расход":
+        await start_delete_expense(update, context)
+        return
+
     await add_expense(update, context)
 
 
 def main():
-    if TOKEN == "PASTE_YOUR_TELEGRAM_BOT_TOKEN_HERE":
-        raise ValueError("Вставь свой токен Telegram бота в переменную TOKEN")
-
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
