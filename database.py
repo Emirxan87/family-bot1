@@ -37,34 +37,69 @@ def _ensure_column(
 ) -> None:
     if not _table_exists(conn, table_name):
         return
+    if _column_exists(conn, table_name, column_name):
+        return
 
-    if not _column_exists(conn, table_name, column_name):
-        conn.execute(
-            f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition}"
-        )
+    conn.execute(
+        f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition}"
+    )
+
+
+def _ensure_timestamp_column(conn: sqlite3.Connection, table_name: str, column_name: str) -> None:
+    """
+    Безопасно добавляет timestamp-колонку в существующую SQLite таблицу.
+    Нельзя использовать DEFAULT CURRENT_TIMESTAMP в ALTER TABLE,
+    поэтому добавляем колонку без default и заполняем существующие строки отдельно.
+    """
+    if not _table_exists(conn, table_name):
+        return
+    if _column_exists(conn, table_name, column_name):
+        return
+
+    conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} TEXT")
+    conn.execute(
+        f"UPDATE {table_name} SET {column_name} = CURRENT_TIMESTAMP WHERE {column_name} IS NULL"
+    )
 
 
 def _run_migrations(conn: sqlite3.Connection) -> None:
-    # Для старых БД на Railway volume:
-    # если shopping_items уже была создана раньше без is_done,
-    # добавляем колонку безопасно, не ломая существующие данные.
+    # shopping_items (legacy compatibility)
     _ensure_column(conn, "shopping_items", "added_by", "INTEGER")
     _ensure_column(conn, "shopping_items", "bought_by", "INTEGER")
     _ensure_column(conn, "shopping_items", "is_done", "INTEGER NOT NULL DEFAULT 0")
-    _ensure_column(
-        conn,
-        "shopping_items",
-        "updated_at",
-        "TEXT DEFAULT CURRENT_TIMESTAMP",
-    )
+    _ensure_timestamp_column(conn, "shopping_items", "updated_at")
+    _ensure_timestamp_column(conn, "shopping_items", "created_at")
 
-    # На случай старой таблицы users без username
+    # users
     _ensure_column(conn, "users", "username", "TEXT")
+    _ensure_timestamp_column(conn, "users", "created_at")
 
-    # На случай старой таблицы locations без label
+    # shopping_lists
+    _ensure_column(conn, "shopping_lists", "created_by", "INTEGER")
+    _ensure_timestamp_column(conn, "shopping_lists", "created_at")
+
+    # events
+    _ensure_column(conn, "events", "event_time", "TEXT")
+    _ensure_column(conn, "events", "is_family", "INTEGER NOT NULL DEFAULT 1")
+    _ensure_timestamp_column(conn, "events", "created_at")
+
+    # expenses
+    _ensure_column(conn, "expenses", "comment", "TEXT")
+    _ensure_timestamp_column(conn, "expenses", "created_at")
+
+    # activity_log
+    _ensure_column(conn, "activity_log", "details", "TEXT")
+    _ensure_timestamp_column(conn, "activity_log", "created_at")
+
+    # user_states
+    _ensure_column(conn, "user_states", "payload", "TEXT")
+    _ensure_timestamp_column(conn, "user_states", "updated_at")
+
+    # locations
     _ensure_column(conn, "locations", "label", "TEXT")
+    _ensure_timestamp_column(conn, "locations", "created_at")
 
-    # На случай старой таблицы moments без новых полей
+    # moments
     _ensure_column(conn, "moments", "caption", "TEXT")
     _ensure_column(conn, "moments", "latitude", "REAL")
     _ensure_column(conn, "moments", "longitude", "REAL")
@@ -72,6 +107,7 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
     _ensure_column(conn, "moments", "place", "TEXT")
     _ensure_column(conn, "moments", "weather", "TEXT")
     _ensure_column(conn, "moments", "temperature", "REAL")
+    _ensure_timestamp_column(conn, "moments", "created_at")
 
 
 def init_db() -> None:
