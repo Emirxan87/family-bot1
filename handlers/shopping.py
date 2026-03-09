@@ -1,4 +1,5 @@
 import re
+import unicodedata
 
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -30,7 +31,7 @@ PHARMACY_KEYWORDS = {
     "пластырь",
     "аптека",
     "омепразол",
-    "но-шпа",
+    "но шпа",
     "ношпа",
     "аспирин",
     "анальгин",
@@ -50,7 +51,7 @@ HOUSEHOLD_KEYWORDS = {
     "гель",
     "зубная паста",
     "щетка",
-    "щётка",
+    "щетка",
     "средство",
     "чистящее",
     "моющее",
@@ -81,6 +82,71 @@ EXPENSE_PREFIXES = (
     "заплатила ",
 )
 
+SERVICE_RAW_TEXTS = {
+    "🛒 Что купить?",
+    "Что купить?",
+    "➕ Добавить покупки",
+    "Добавить покупки",
+    "🏪 Магазин",
+    "Магазин",
+    "💊 Аптека",
+    "Аптека",
+    "📦 Онлайн",
+    "Онлайн",
+    "✅ Куплено",
+    "Куплено",
+    "🧹 Очистить купленное",
+    "Очистить купленное",
+    "💸 Расход",
+    "Расход",
+    "📖 Расходы",
+    "📚 Расходы",
+    "Расходы",
+    "📊 Статистика",
+    "Статистика",
+    "💰 Итого",
+    "Итого",
+    "📅 Мой день",
+    "Мой день",
+    "👨‍👩‍👧‍👦 День семьи",
+    "День семьи",
+    "➕ Событие",
+    "Событие",
+    "ℹ️ Помощь",
+    "Помощь",
+    "👨‍👩‍👧‍👦 Семья",
+    "Семья",
+    "⬅️ Отмена",
+    "Отмена",
+    "🛒 Всё сразу",
+    "Всё сразу",
+    "Все сразу",
+    "/start",
+    "/help",
+    "/family",
+    "/join",
+    "/expenses",
+    "/total",
+}
+
+
+def canonical_text(text: str) -> str:
+    value = unicodedata.normalize("NFKC", text or "").lower().replace("ё", "е")
+    cleaned = []
+
+    for ch in value:
+        if ch.isalnum() or ch in {" ", "/", "?"}:
+            cleaned.append(ch)
+        else:
+            cleaned.append(" ")
+
+    value = "".join(cleaned)
+    value = re.sub(r"\s+", " ", value).strip()
+    return value
+
+
+SERVICE_TEXTS = {canonical_text(text) for text in SERVICE_RAW_TEXTS}
+
 
 def clean_item_text(text: str) -> str:
     text = text.strip()
@@ -88,13 +154,6 @@ def clean_item_text(text: str) -> str:
     text = re.sub(r"^\d+[\.\)]\s*", "", text)
     text = re.sub(r"\s+", " ", text)
     return text.strip(" ,;.")
-
-
-def normalize_service_text(text: str) -> str:
-    value = (text or "").strip().lower()
-    value = re.sub(r"^[^\wа-яё]+", "", value, flags=re.IGNORECASE)
-    value = re.sub(r"\s+", " ", value)
-    return value.strip()
 
 
 def split_shopping_items(raw_text: str):
@@ -161,50 +220,26 @@ def clear_shopping_modes(context: ContextTypes.DEFAULT_TYPE):
         "waiting_for_shopping_items",
         "selected_shopping_section",
         "waiting_for_done_scope",
+        "waiting_for_done_items",
+        "selected_done_section",
+        "done_candidates",
         "waiting_for_clear_done_scope",
     ]:
         context.user_data.pop(key, None)
 
 
 def is_probably_expense_text(text: str) -> bool:
-    lower_text = text.strip().lower()
-    return any(lower_text.startswith(prefix) for prefix in EXPENSE_PREFIXES)
+    normalized = canonical_text(text)
+    return any(normalized.startswith(canonical_text(prefix)) for prefix in EXPENSE_PREFIXES)
 
 
 def is_service_message(text: str) -> bool:
-    normalized = normalize_service_text(text)
-
-    blocked_exact = {
-        "что купить?",
-        "добавить покупки",
-        "магазин",
-        "аптека",
-        "онлайн",
-        "куплено",
-        "очистить купленное",
-        "расход",
-        "расходы",
-        "статистика",
-        "итого",
-        "мой день",
-        "день семьи",
-        "событие",
-        "семья",
-        "помощь",
-        "отмена",
-        "/start",
-        "/help",
-        "/family",
-        "/join",
-        "/expenses",
-        "/total",
-    }
-
-    return normalized in blocked_exact or normalized.startswith("/")
+    normalized = canonical_text(text)
+    return normalized in SERVICE_TEXTS or normalized.startswith("/")
 
 
 def detect_section_for_item(item: str) -> str:
-    text = item.lower()
+    text = canonical_text(item)
 
     if any(word in text for word in ONLINE_KEYWORDS):
         return "📦 Маркетплейс"
@@ -216,6 +251,20 @@ def detect_section_for_item(item: str) -> str:
         return "🧴 Хозтовары"
 
     return "🥦 Продукты"
+
+
+def parse_number_selection(text: str):
+    numbers = re.findall(r"\d+", text)
+    seen = set()
+    result = []
+
+    for num in numbers:
+        if num in seen:
+            continue
+        seen.add(num)
+        result.append(num)
+
+    return result
 
 
 async def show_all_shopping(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -362,7 +411,7 @@ async def handle_shopping_section_choice(update: Update, context: ContextTypes.D
 
     text = (update.message.text or "").strip()
 
-    if text == "⬅️ Отмена":
+    if canonical_text(text) == canonical_text("⬅️ Отмена"):
         clear_shopping_modes(context)
         await update.message.reply_text(
             "Действие отменено",
@@ -399,7 +448,7 @@ async def handle_shopping_items_input(update: Update, context: ContextTypes.DEFA
 
     text = (update.message.text or "").strip()
 
-    if text == "⬅️ Отмена":
+    if canonical_text(text) == canonical_text("⬅️ Отмена"):
         clear_shopping_modes(context)
         await update.message.reply_text(
             "Действие отменено",
@@ -433,13 +482,13 @@ async def handle_shopping_items_input(update: Update, context: ContextTypes.DEFA
         "SELECT item FROM shopping_items WHERE list_id=? AND status='active'",
         (list_id,)
     )
-    existing = {row[0].strip().lower() for row in cursor.fetchall()}
+    existing = {canonical_text(row[0]) for row in cursor.fetchall()}
 
     added = []
     skipped = []
 
     for item in items:
-        key = item.lower()
+        key = canonical_text(item)
         if key in existing:
             skipped.append(item)
             continue
@@ -478,6 +527,7 @@ async def handle_quick_shopping_input(update: Update, context: ContextTypes.DEFA
         context.user_data.get("waiting_for_shopping_section"),
         context.user_data.get("waiting_for_shopping_items"),
         context.user_data.get("waiting_for_done_scope"),
+        context.user_data.get("waiting_for_done_items"),
         context.user_data.get("waiting_for_clear_done_scope"),
         context.user_data.get("waiting_for_expense_category"),
         context.user_data.get("waiting_for_expense_input"),
@@ -515,15 +565,16 @@ async def handle_quick_shopping_input(update: Update, context: ContextTypes.DEFA
         list_id = get_list_id(family_id, section)
 
         cursor.execute(
-            "SELECT 1 FROM shopping_items WHERE list_id=? AND status='active' AND LOWER(TRIM(item))=?",
-            (list_id, item.strip().lower())
+            "SELECT item FROM shopping_items WHERE list_id=? AND status='active'",
+            (list_id,)
         )
-        exists = cursor.fetchone()
+        existing = {canonical_text(row[0]) for row in cursor.fetchall()}
 
-        target = skipped_by_section if exists else added_by_section
+        item_key = canonical_text(item)
+        target = skipped_by_section if item_key in existing else added_by_section
         target.setdefault(section, []).append(item)
 
-        if not exists:
+        if item_key not in existing:
             cursor.execute(
                 "INSERT INTO shopping_items (list_id, item, status) VALUES (?, ?, 'active')",
                 (list_id, item)
@@ -581,7 +632,7 @@ async def handle_mark_done_scope(update: Update, context: ContextTypes.DEFAULT_T
     telegram_id = update.effective_user.id
     family_id = get_user_family_id(telegram_id)
 
-    if text == "⬅️ Отмена":
+    if canonical_text(text) == canonical_text("⬅️ Отмена"):
         clear_shopping_modes(context)
         await update.message.reply_text(
             "Действие отменено",
@@ -597,7 +648,7 @@ async def handle_mark_done_scope(update: Update, context: ContextTypes.DEFAULT_T
         )
         return True
 
-    if text == "🛒 Всё сразу":
+    if canonical_text(text) == canonical_text("🛒 Всё сразу"):
         cursor.execute(
             """
             UPDATE shopping_items
@@ -627,15 +678,111 @@ async def handle_mark_done_scope(update: Update, context: ContextTypes.DEFAULT_T
         return True
 
     list_id = get_list_id(family_id, text)
+
     cursor.execute(
-        "UPDATE shopping_items SET status='done' WHERE list_id=? AND status='active'",
+        "SELECT id, item FROM shopping_items WHERE list_id=? AND status='active' ORDER BY id",
         (list_id,)
     )
-    conn.commit()
-    clear_shopping_modes(context)
+    rows = cursor.fetchall()
+
+    if not rows:
+        clear_shopping_modes(context)
+        await update.message.reply_text(
+            f"В разделе {text} нет активных покупок",
+            reply_markup=get_main_keyboard()
+        )
+        return True
+
+    context.user_data["waiting_for_done_scope"] = False
+    context.user_data["waiting_for_done_items"] = True
+    context.user_data["selected_done_section"] = text
+    context.user_data["done_candidates"] = {
+        str(index): row[0] for index, row in enumerate(rows, start=1)
+    }
+
+    message_lines = [
+        f"✅ Отметить купленное — {text}",
+        "",
+        "Отправь номер или несколько номеров.",
+        "Например: 1",
+        "Или: 1 3 5",
+        "",
+    ]
+
+    for index, row in enumerate(rows, start=1):
+        message_lines.append(f"{index}. {row[1]}")
 
     await update.message.reply_text(
-        f"Все покупки в разделе {text} отмечены как купленные ✅",
+        "\n".join(message_lines),
+        reply_markup=get_cancel_keyboard()
+    )
+    return True
+
+
+async def handle_mark_done_items(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.user_data.get("waiting_for_done_items"):
+        return False
+
+    text = (update.message.text or "").strip()
+
+    if canonical_text(text) == canonical_text("⬅️ Отмена"):
+        clear_shopping_modes(context)
+        await update.message.reply_text(
+            "Действие отменено",
+            reply_markup=get_main_keyboard()
+        )
+        return True
+
+    selected_numbers = parse_number_selection(text)
+    done_candidates = context.user_data.get("done_candidates", {})
+
+    if not selected_numbers:
+        await update.message.reply_text(
+            "Отправь номер или несколько номеров.\nНапример: 1 3",
+            reply_markup=get_cancel_keyboard()
+        )
+        return True
+
+    invalid_numbers = [num for num in selected_numbers if num not in done_candidates]
+    if invalid_numbers:
+        await update.message.reply_text(
+            "Некоторые номера не найдены.\nОтправь только номера из списка.",
+            reply_markup=get_cancel_keyboard()
+        )
+        return True
+
+    item_ids = [done_candidates[num] for num in selected_numbers]
+
+    placeholders = ",".join("?" for _ in item_ids)
+    cursor.execute(
+        f"SELECT id, item FROM shopping_items WHERE id IN ({placeholders}) ORDER BY id",
+        tuple(item_ids)
+    )
+    rows = cursor.fetchall()
+
+    if not rows:
+        clear_shopping_modes(context)
+        await update.message.reply_text(
+            "Не удалось найти выбранные позиции",
+            reply_markup=get_main_keyboard()
+        )
+        return True
+
+    cursor.execute(
+        f"UPDATE shopping_items SET status='done' WHERE id IN ({placeholders})",
+        tuple(item_ids)
+    )
+    conn.commit()
+
+    section = context.user_data.get("selected_done_section", "разделе")
+    clear_shopping_modes(context)
+
+    response = [f"✅ Отметил как купленные в разделе {section}:"]
+    for _, item in rows:
+        response.append(f"• {item}")
+
+    await update.message.reply_text(
+        "\n".join(response),
         reply_markup=get_main_keyboard()
     )
     return True
@@ -659,7 +806,7 @@ async def handle_clear_done_scope(update: Update, context: ContextTypes.DEFAULT_
     telegram_id = update.effective_user.id
     family_id = get_user_family_id(telegram_id)
 
-    if text == "⬅️ Отмена":
+    if canonical_text(text) == canonical_text("⬅️ Отмена"):
         clear_shopping_modes(context)
         await update.message.reply_text(
             "Действие отменено",
@@ -675,7 +822,7 @@ async def handle_clear_done_scope(update: Update, context: ContextTypes.DEFAULT_
         )
         return True
 
-    if text == "🛒 Всё сразу":
+    if canonical_text(text) == canonical_text("🛒 Всё сразу"):
         cursor.execute(
             """
             DELETE FROM shopping_items
