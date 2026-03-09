@@ -12,6 +12,68 @@ def get_conn():
         yield conn
 
 
+def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
+    row = conn.execute(
+        """
+        SELECT name
+        FROM sqlite_master
+        WHERE type = 'table' AND name = ?
+        """,
+        (table_name,),
+    ).fetchone()
+    return row is not None
+
+
+def _column_exists(conn: sqlite3.Connection, table_name: str, column_name: str) -> bool:
+    rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+    return any(row["name"] == column_name for row in rows)
+
+
+def _ensure_column(
+    conn: sqlite3.Connection,
+    table_name: str,
+    column_name: str,
+    column_definition: str,
+) -> None:
+    if not _table_exists(conn, table_name):
+        return
+
+    if not _column_exists(conn, table_name, column_name):
+        conn.execute(
+            f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition}"
+        )
+
+
+def _run_migrations(conn: sqlite3.Connection) -> None:
+    # Для старых БД на Railway volume:
+    # если shopping_items уже была создана раньше без is_done,
+    # добавляем колонку безопасно, не ломая существующие данные.
+    _ensure_column(conn, "shopping_items", "added_by", "INTEGER")
+    _ensure_column(conn, "shopping_items", "bought_by", "INTEGER")
+    _ensure_column(conn, "shopping_items", "is_done", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(
+        conn,
+        "shopping_items",
+        "updated_at",
+        "TEXT DEFAULT CURRENT_TIMESTAMP",
+    )
+
+    # На случай старой таблицы users без username
+    _ensure_column(conn, "users", "username", "TEXT")
+
+    # На случай старой таблицы locations без label
+    _ensure_column(conn, "locations", "label", "TEXT")
+
+    # На случай старой таблицы moments без новых полей
+    _ensure_column(conn, "moments", "caption", "TEXT")
+    _ensure_column(conn, "moments", "latitude", "REAL")
+    _ensure_column(conn, "moments", "longitude", "REAL")
+    _ensure_column(conn, "moments", "city", "TEXT")
+    _ensure_column(conn, "moments", "place", "TEXT")
+    _ensure_column(conn, "moments", "weather", "TEXT")
+    _ensure_column(conn, "moments", "temperature", "REAL")
+
+
 def init_db() -> None:
     with get_conn() as conn:
         conn.executescript(
@@ -129,14 +191,37 @@ def init_db() -> None:
                 FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE,
                 FOREIGN KEY (user_id) REFERENCES users(telegram_id) ON DELETE CASCADE
             );
-
-            CREATE INDEX IF NOT EXISTS idx_users_family ON users(family_id);
-            CREATE INDEX IF NOT EXISTS idx_shopping_lists_family ON shopping_lists(family_id);
-            CREATE INDEX IF NOT EXISTS idx_shopping_items_list ON shopping_items(list_id, is_done);
-            CREATE INDEX IF NOT EXISTS idx_events_family_date ON events(family_id, event_date);
-            CREATE INDEX IF NOT EXISTS idx_expenses_family_created ON expenses(family_id, created_at);
-            CREATE INDEX IF NOT EXISTS idx_activity_family_created ON activity_log(family_id, created_at);
-            CREATE INDEX IF NOT EXISTS idx_locations_family_created ON locations(family_id, created_at);
-            CREATE INDEX IF NOT EXISTS idx_moments_family_created ON moments(family_id, created_at);
             """
         )
+
+        _run_migrations(conn)
+
+        conn.executescript(
+            """
+            CREATE INDEX IF NOT EXISTS idx_users_family
+            ON users(family_id);
+
+            CREATE INDEX IF NOT EXISTS idx_shopping_lists_family
+            ON shopping_lists(family_id);
+
+            CREATE INDEX IF NOT EXISTS idx_shopping_items_list
+            ON shopping_items(list_id, is_done);
+
+            CREATE INDEX IF NOT EXISTS idx_events_family_date
+            ON events(family_id, event_date);
+
+            CREATE INDEX IF NOT EXISTS idx_expenses_family_created
+            ON expenses(family_id, created_at);
+
+            CREATE INDEX IF NOT EXISTS idx_activity_family_created
+            ON activity_log(family_id, created_at);
+
+            CREATE INDEX IF NOT EXISTS idx_locations_family_created
+            ON locations(family_id, created_at);
+
+            CREATE INDEX IF NOT EXISTS idx_moments_family_created
+            ON moments(family_id, created_at);
+            """
+        )
+
+        conn.commit()
