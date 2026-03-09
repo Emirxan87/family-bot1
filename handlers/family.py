@@ -1,169 +1,54 @@
-import random
-
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from database import cursor, conn, ensure_default_lists, get_user_family_id
-from keyboards import get_main_keyboard
+from keyboards.family import family_menu_keyboard
+from keyboards.main_menu import main_menu_keyboard
+from repos.users_repo import UsersRepo
+from repos.states_repo import StatesRepo
+from services.activity_service import ActivityService
+from services.family_service import FamilyService
+from states import INVITING_FAMILY_MEMBER
+
+family_service = FamilyService()
+activity_service = ActivityService()
+users_repo = UsersRepo()
+states_repo = StatesRepo()
 
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    telegram_id = update.effective_user.id
-    name = update.effective_user.first_name or "Участник"
-
-    cursor.execute("SELECT family_id FROM users WHERE telegram_id=?", (telegram_id,))
-    user = cursor.fetchone()
-
-    if user:
-        ensure_default_lists(user[0])
-        await update.message.reply_text(
-            "Вы уже в семье 👍",
-            reply_markup=get_main_keyboard()
-        )
-        return
-
-    code = str(random.randint(1000, 9999))
-    while True:
-        cursor.execute("SELECT id FROM families WHERE code=?", (code,))
-        if not cursor.fetchone():
-            break
-        code = str(random.randint(1000, 9999))
-
-    cursor.execute("INSERT INTO families (code) VALUES (?)", (code,))
-    family_id = cursor.lastrowid
-
-    cursor.execute(
-        "INSERT INTO users (telegram_id, family_id, name, role) VALUES (?,?,?,?)",
-        (telegram_id, family_id, name, "родитель")
-    )
-    conn.commit()
-
-    ensure_default_lists(family_id)
-
-    await update.message.reply_text(
-        f"Семья создана 👨‍👩‍👧\n\n"
-        f"Код семьи: {code}\n\n"
-        f"Пусть остальные напишут:\n"
-        f"/join {code}",
-        reply_markup=get_main_keyboard()
-    )
+async def family_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Раздел семьи 👨‍👩‍👧‍👦", reply_markup=family_menu_keyboard())
 
 
-async def join(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text(
-            "Напиши так:\n/join 1234",
-            reply_markup=get_main_keyboard()
-        )
-        return
+async def family_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (update.message.text or "").strip()
+    user_id = update.effective_user.id
 
-    code = context.args[0].strip()
-    telegram_id = update.effective_user.id
-    name = update.effective_user.first_name or "Участник"
-
-    cursor.execute("SELECT id FROM families WHERE code=?", (code,))
-    fam = cursor.fetchone()
-
-    if not fam:
-        await update.message.reply_text(
-            "Семья не найдена",
-            reply_markup=get_main_keyboard()
-        )
-        return
-
-    family_id = fam[0]
-
-    cursor.execute("SELECT family_id FROM users WHERE telegram_id=?", (telegram_id,))
-    existing_user = cursor.fetchone()
-
-    if existing_user:
-        old_family_id = existing_user[0]
-
-        if old_family_id == family_id:
-            await update.message.reply_text(
-                "Ты уже в этой семье 👍",
-                reply_markup=get_main_keyboard()
-            )
+    state, _ = states_repo.get_state(user_id)
+    if state == INVITING_FAMILY_MEMBER:
+        family = family_service.join_family(user_id, text)
+        states_repo.clear_state(user_id)
+        if not family:
+            await update.message.reply_text("Код не найден. Проверьте invite code и попробуйте снова.")
             return
-
-        cursor.execute(
-            """
-            UPDATE users
-            SET family_id=?, name=?, role=?
-            WHERE telegram_id=?
-            """,
-            (family_id, name, "участник", telegram_id)
-        )
-        conn.commit()
-
-        ensure_default_lists(family_id)
-
+        activity_service.log(family["id"], user_id, "family_join", "присоединился к семье")
         await update.message.reply_text(
-            "Ты перешёл в эту семью 👨‍👩‍👧",
-            reply_markup=get_main_keyboard()
+            f"Добро пожаловать в семью «{family['name']}» 🤍", reply_markup=main_menu_keyboard()
         )
         return
 
-    cursor.execute(
-        "INSERT INTO users (telegram_id, family_id, name, role) VALUES (?,?,?,?)",
-        (telegram_id, family_id, name, "участник")
-    )
-    conn.commit()
-
-    ensure_default_lists(family_id)
-
-    await update.message.reply_text(
-        "Вы присоединились к семье 👨‍👩‍👧",
-        reply_markup=get_main_keyboard()
-    )
-
-
-async def family(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    telegram_id = update.effective_user.id
-    family_id = get_user_family_id(telegram_id)
-
-    if not family_id:
+    if text == "➕ Создать семью":
+        created = family_service.create_family(user_id, "Наша семья")
+        activity_service.log(created["id"], user_id, "family_create", "создал(а) семью")
         await update.message.reply_text(
-            "Сначала нажми /start",
-            reply_markup=get_main_keyboard()
+            f"Семья создана!\nInvite code: `{created['invite_code']}`",
+            parse_mode="Markdown",
+            reply_markup=family_menu_keyboard(),
         )
-        return
-
-    cursor.execute(
-        "SELECT name, role FROM users WHERE family_id=? ORDER BY name",
-        (family_id,)
-    )
-    members = cursor.fetchall()
-
-    text = "👨‍👩‍👧 Семья:\n\n"
-    for name, role in members:
-        text += f"• {name} — {role}\n"
-
-    await update.message.reply_text(
-        text,
-        reply_markup=get_main_keyboard()
-    )
-
-
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (
-        "ℹ️ Как пользоваться:\n\n"
-        "Покупки:\n"
-        "1. Нажми ➕ Добавить покупки\n"
-        "2. Выбери раздел\n"
-        "3. Отправь список одним сообщением\n\n"
-        "Расходы:\n"
-        "1. Нажми 💸 Расход\n"
-        "2. Выбери категорию\n"
-        "3. Напиши: 250 молоко\n\n"
-        "Календарь:\n"
-        "1. Нажми ➕ Событие\n"
-        "2. Введи дату\n"
-        "3. Введи начало и конец\n"
-        "4. Напиши название события"
-    )
-
-    await update.message.reply_text(
-        text,
-        reply_markup=get_main_keyboard()
-    )
+    elif text == "🔑 Вступить по коду":
+        states_repo.set_state(user_id, INVITING_FAMILY_MEMBER)
+        await update.message.reply_text("Введите invite code семьи (например, ABC123):")
+    elif text == "👥 Участники":
+        text_info = family_service.family_info_text(user_id)
+        await update.message.reply_text(text_info, parse_mode="Markdown", reply_markup=family_menu_keyboard())
+    elif text == "🏠 Главное меню":
+        await update.message.reply_text("Возвращаемся в главное меню", reply_markup=main_menu_keyboard())

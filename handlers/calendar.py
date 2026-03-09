@@ -1,326 +1,72 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from database import cursor, conn, get_user_family_id, get_user_name
-from keyboards import get_main_keyboard, get_cancel_keyboard
+from keyboards.calendar import calendar_menu_keyboard
+from keyboards.main_menu import main_menu_keyboard
+from repos.states_repo import StatesRepo
+from repos.users_repo import UsersRepo
+from services.activity_service import ActivityService
+from services.calendar_service import CalendarService
+from services.notification_service import NotificationService
+from states import ADDING_EVENT_DATE, ADDING_EVENT_TIME, ADDING_EVENT_TITLE
+
+users_repo = UsersRepo()
+states_repo = StatesRepo()
+calendar_service = CalendarService()
+activity_service = ActivityService()
+notify_service = NotificationService()
 
 
-def clear_calendar_modes(context: ContextTypes.DEFAULT_TYPE):
-    for key in [
-        "waiting_for_event_date",
-        "waiting_for_event_start",
-        "waiting_for_event_end",
-        "waiting_for_event_title",
-        "new_event_date",
-        "new_event_start",
-        "new_event_end",
-    ]:
-        context.user_data.pop(key, None)
+async def calendar_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Календарь 📅", reply_markup=calendar_menu_keyboard())
 
 
-def parse_date_input(text: str):
-    text = text.strip().lower()
+async def calendar_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (update.message.text or "").strip()
+    user_id = update.effective_user.id
+    user = users_repo.get_user(user_id)
+    if not user or not user["family_id"]:
+        await update.message.reply_text("Сначала присоединитесь к семье.", reply_markup=main_menu_keyboard())
+        return
+    state, payload = states_repo.get_state(user_id)
 
-    if text == "сегодня":
-        return datetime.now().strftime("%Y-%m-%d")
+    if text == "➕ Добавить событие":
+        states_repo.set_state(user_id, ADDING_EVENT_TITLE, {})
+        await update.message.reply_text("Введите название события:")
+        return
+    if text == "📆 Сегодня":
+        await update.message.reply_text(calendar_service.today_text(user["family_id"]))
+        return
+    if text == "🏠 Главное меню":
+        await update.message.reply_text("Главное меню", reply_markup=main_menu_keyboard())
+        return
 
-    if text == "завтра":
-        return (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
-
-    for fmt in ("%d.%m.%Y", "%d.%m.%y"):
+    if state == ADDING_EVENT_TITLE:
+        payload["title"] = text
+        states_repo.set_state(user_id, ADDING_EVENT_DATE, payload)
+        await update.message.reply_text("Введите дату в формате ГГГГ-ММ-ДД")
+    elif state == ADDING_EVENT_DATE:
         try:
-            dt = datetime.strptime(text, fmt)
-            return dt.strftime("%Y-%m-%d")
+            datetime.strptime(text, "%Y-%m-%d")
         except ValueError:
-            pass
-
-    for fmt in ("%d.%m",):
-        try:
-            now = datetime.now()
-            dt = datetime.strptime(text, fmt).replace(year=now.year)
-            return dt.strftime("%Y-%m-%d")
-        except ValueError:
-            pass
-
-    return None
-
-
-def parse_time_input(text: str):
-    text = text.strip()
-    try:
-        dt = datetime.strptime(text, "%H:%M")
-        return dt.strftime("%H:%M")
-    except ValueError:
-        return None
-
-
-def format_date_for_user(date_str: str):
-    try:
-        dt = datetime.strptime(date_str, "%Y-%m-%d")
-        return dt.strftime("%d.%m.%Y")
-    except ValueError:
-        return date_str
-
-
-async def start_add_event(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    clear_calendar_modes(context)
-    context.user_data["waiting_for_event_date"] = True
-
-    await update.message.reply_text(
-        "Введи дату события.\n\nПримеры:\nсегодня\nзавтра\n15.03.2026",
-        reply_markup=get_cancel_keyboard()
-    )
-
-
-async def handle_event_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.user_data.get("waiting_for_event_date"):
-        return False
-
-    text = (update.message.text or "").strip()
-
-    if text == "⬅️ Отмена":
-        clear_calendar_modes(context)
-        await update.message.reply_text(
-            "Добавление события отменено",
-            reply_markup=get_main_keyboard()
+            await update.message.reply_text("Нужен формат ГГГГ-ММ-ДД")
+            return
+        payload["event_date"] = text
+        states_repo.set_state(user_id, ADDING_EVENT_TIME, payload)
+        await update.message.reply_text("Введите время ЧЧ:ММ или '-' если не важно")
+    elif state == ADDING_EVENT_TIME:
+        event_time = None if text == "-" else text
+        calendar_service.add_event(
+            user["family_id"], user_id, payload["title"], payload["event_date"], event_time, is_family=1
         )
-        return True
-
-    parsed_date = parse_date_input(text)
-    if not parsed_date:
-        await update.message.reply_text(
-            "Не понял дату.\nНапиши так:\nсегодня\nзавтра\n15.03.2026",
-            reply_markup=get_cancel_keyboard()
+        states_repo.clear_state(user_id)
+        activity_service.log(user["family_id"], user_id, "event_add", f"создал(а) событие «{payload['title']}»")
+        await notify_service.notify_family(
+            context.bot,
+            user["family_id"],
+            user_id,
+            f"📅 {user['full_name']} добавил(а) событие: {payload['title']} ({payload['event_date']})",
         )
-        return True
-
-    context.user_data["new_event_date"] = parsed_date
-    context.user_data["waiting_for_event_date"] = False
-    context.user_data["waiting_for_event_start"] = True
-
-    await update.message.reply_text(
-        "Введи время начала.\nПример: 09:30",
-        reply_markup=get_cancel_keyboard()
-    )
-    return True
-
-
-async def handle_event_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.user_data.get("waiting_for_event_start"):
-        return False
-
-    text = (update.message.text or "").strip()
-
-    if text == "⬅️ Отмена":
-        clear_calendar_modes(context)
-        await update.message.reply_text(
-            "Добавление события отменено",
-            reply_markup=get_main_keyboard()
-        )
-        return True
-
-    parsed_time = parse_time_input(text)
-    if not parsed_time:
-        await update.message.reply_text(
-            "Не понял время.\nНапиши так: 09:30",
-            reply_markup=get_cancel_keyboard()
-        )
-        return True
-
-    context.user_data["new_event_start"] = parsed_time
-    context.user_data["waiting_for_event_start"] = False
-    context.user_data["waiting_for_event_end"] = True
-
-    await update.message.reply_text(
-        "Введи время конца.\nПример: 11:00",
-        reply_markup=get_cancel_keyboard()
-    )
-    return True
-
-
-async def handle_event_end(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.user_data.get("waiting_for_event_end"):
-        return False
-
-    text = (update.message.text or "").strip()
-
-    if text == "⬅️ Отмена":
-        clear_calendar_modes(context)
-        await update.message.reply_text(
-            "Добавление события отменено",
-            reply_markup=get_main_keyboard()
-        )
-        return True
-
-    parsed_time = parse_time_input(text)
-    if not parsed_time:
-        await update.message.reply_text(
-            "Не понял время.\nНапиши так: 11:00",
-            reply_markup=get_cancel_keyboard()
-        )
-        return True
-
-    start_time = context.user_data.get("new_event_start")
-    if parsed_time <= start_time:
-        await update.message.reply_text(
-            "Время конца должно быть позже начала",
-            reply_markup=get_cancel_keyboard()
-        )
-        return True
-
-    context.user_data["new_event_end"] = parsed_time
-    context.user_data["waiting_for_event_end"] = False
-    context.user_data["waiting_for_event_title"] = True
-
-    await update.message.reply_text(
-        "Напиши название события.\nПример: Школа / Врач / Работа / Танцы",
-        reply_markup=get_cancel_keyboard()
-    )
-    return True
-
-
-async def handle_event_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.user_data.get("waiting_for_event_title"):
-        return False
-
-    text = (update.message.text or "").strip()
-
-    if text == "⬅️ Отмена":
-        clear_calendar_modes(context)
-        await update.message.reply_text(
-            "Добавление события отменено",
-            reply_markup=get_main_keyboard()
-        )
-        return True
-
-    if not text:
-        await update.message.reply_text(
-            "Название не должно быть пустым",
-            reply_markup=get_cancel_keyboard()
-        )
-        return True
-
-    telegram_id = update.effective_user.id
-    family_id = get_user_family_id(telegram_id)
-    member_name = get_user_name(telegram_id) or (update.effective_user.first_name or "Участник")
-
-    if not family_id:
-        clear_calendar_modes(context)
-        await update.message.reply_text(
-            "Сначала нажми /start",
-            reply_markup=get_main_keyboard()
-        )
-        return True
-
-    event_date = context.user_data.get("new_event_date")
-    start_time = context.user_data.get("new_event_start")
-    end_time = context.user_data.get("new_event_end")
-
-    cursor.execute(
-        """
-        INSERT INTO events (
-            family_id,
-            user_telegram_id,
-            member_name,
-            event_date,
-            start_time,
-            end_time,
-            title
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        (family_id, telegram_id, member_name, event_date, start_time, end_time, text)
-    )
-    conn.commit()
-
-    clear_calendar_modes(context)
-
-    await update.message.reply_text(
-        f"Событие добавлено ✅\n\n"
-        f"{format_date_for_user(event_date)}\n"
-        f"{start_time}–{end_time}\n"
-        f"{text}",
-        reply_markup=get_main_keyboard()
-    )
-    return True
-
-
-async def show_my_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    telegram_id = update.effective_user.id
-    today = datetime.now().strftime("%Y-%m-%d")
-
-    cursor.execute(
-        """
-        SELECT event_date, start_time, end_time, title
-        FROM events
-        WHERE user_telegram_id=? AND event_date=?
-        ORDER BY start_time
-        """,
-        (telegram_id, today)
-    )
-    rows = cursor.fetchall()
-
-    if not rows:
-        await update.message.reply_text(
-            "На сегодня у тебя событий нет",
-            reply_markup=get_main_keyboard()
-        )
-        return
-
-    text = "📅 Мой день:\n\n"
-    for event_date, start_time, end_time, title in rows:
-        text += f"• {start_time}–{end_time} — {title}\n"
-
-    await update.message.reply_text(
-        text,
-        reply_markup=get_main_keyboard()
-    )
-
-
-async def show_family_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    telegram_id = update.effective_user.id
-    family_id = get_user_family_id(telegram_id)
-    today = datetime.now().strftime("%Y-%m-%d")
-
-    if not family_id:
-        await update.message.reply_text(
-            "Сначала нажми /start",
-            reply_markup=get_main_keyboard()
-        )
-        return
-
-    cursor.execute(
-        """
-        SELECT member_name, start_time, end_time, title
-        FROM events
-        WHERE family_id=? AND event_date=?
-        ORDER BY member_name, start_time
-        """,
-        (family_id, today)
-    )
-    rows = cursor.fetchall()
-
-    if not rows:
-        await update.message.reply_text(
-            "На сегодня в семье событий нет",
-            reply_markup=get_main_keyboard()
-        )
-        return
-
-    grouped = {}
-    for member_name, start_time, end_time, title in rows:
-        grouped.setdefault(member_name, []).append((start_time, end_time, title))
-
-    text = "👨‍👩‍👧 День семьи:\n\n"
-    for member_name, items in grouped.items():
-        text += f"{member_name}\n"
-        for start_time, end_time, title in items:
-            text += f"• {start_time}–{end_time} — {title}\n"
-        text += "\n"
-
-    await update.message.reply_text(
-        text.strip(),
-        reply_markup=get_main_keyboard()
-    )
+        await update.message.reply_text("Событие добавлено ✅", reply_markup=calendar_menu_keyboard())
