@@ -27,7 +27,14 @@ from handlers.shopping import shopping_menu, shopping_router
 from handlers.start import help_command, start, to_main_menu
 from keyboards.main_menu import main_menu_keyboard
 from repos.states_repo import StatesRepo
-from states import ADDING_SHOPPING_ITEM
+from states import (
+    ADDING_EXPENSE_ACTOR,
+    ADDING_EXPENSE_AMOUNT,
+    ADDING_EXPENSE_CATEGORY,
+    ADDING_EXPENSE_COMMENT,
+    ADDING_EXPENSE_SUBCATEGORY,
+    ADDING_SHOPPING_ITEM,
+)
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
@@ -54,9 +61,20 @@ MENU_BUTTON_TEXTS = {
     "✅ Подтвердить",
     "➕ Добавить событие",
     "📆 Сегодня",
-    "➕ Добавить расход",
-    "📃 Последние расходы",
-    "📊 Сводка",
+    "➖ Расход",
+    "➕ Поступление",
+    "➕ Ещё расход",
+    "➕ Ещё поступление",
+    "📃 Последние операции",
+    "📊 Статистика",
+    "👤 Кто потратил",
+    "👤 Кто получил",
+    "💬 Комментарий",
+    "📅 Сегодня",
+    "🗓 7 дней",
+    "📆 Месяц",
+    "📊 Квартал",
+    "📈 Год",
     "➕ Добавить момент",
     "🖼 Лента моментов",
     "⏭ Пропустить",
@@ -75,6 +93,15 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     state, _ = states_repo.get_state(user_id)
 
+    finance_states = {
+        ADDING_EXPENSE_CATEGORY,
+        ADDING_EXPENSE_SUBCATEGORY,
+        ADDING_EXPENSE_AMOUNT,
+        ADDING_EXPENSE_COMMENT,
+        ADDING_EXPENSE_ACTOR,
+    }
+    if state in finance_states and text in MENU_BUTTON_TEXTS:
+        states_repo.clear_state(user_id)
     if state == ADDING_SHOPPING_ITEM and text in MENU_BUTTON_TEXTS:
         states_repo.clear_state(user_id)
 
@@ -108,7 +135,22 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await shopping_router(update, context)
     elif text in {"➕ Добавить событие", "📆 Сегодня"}:
         await calendar_router(update, context)
-    elif text in {"➕ Добавить расход", "📃 Последние расходы", "📊 Сводка"}:
+    elif text in {
+        "➖ Расход",
+        "➕ Поступление",
+        "➕ Ещё расход",
+        "➕ Ещё поступление",
+        "📃 Последние операции",
+        "📊 Статистика",
+        "👤 Кто потратил",
+        "👤 Кто получил",
+        "💬 Комментарий",
+        "📅 Сегодня",
+        "🗓 7 дней",
+        "📆 Месяц",
+        "📊 Квартал",
+        "📈 Год",
+    }:
         await expenses_router(update, context)
     elif text in {"➕ Добавить момент", "🖼 Лента моментов", "⏭ Пропустить"}:
         await memories_router(update, context)
