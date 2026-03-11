@@ -8,6 +8,7 @@ from repos.users_repo import UsersRepo
 from services.activity_service import ActivityService
 from services.notification_service import NotificationService
 from services.shopping_service import ShoppingService
+from utils.display_name import preferred_display_name
 
 shopping_service = ShoppingService()
 shopping_repo = ShoppingRepo()
@@ -53,6 +54,6 @@ async def handle_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.bot,
             item["family_id"],
             user_id,
-            f"🛍 {user['full_name']} {status} «{item['title']}»",
+            f"🛍 {preferred_display_name(user)} {status} «{item['title']}»",
         )
         return

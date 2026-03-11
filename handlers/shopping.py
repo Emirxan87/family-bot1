@@ -16,6 +16,7 @@ from repos.users_repo import UsersRepo
 from services.activity_service import ActivityService
 from services.notification_service import NotificationService
 from services.shopping_service import ShoppingService
+from utils.display_name import preferred_display_name
 from states import ADDING_SHOPPING_ITEM
 
 users_repo = UsersRepo()
@@ -119,7 +120,7 @@ async def shopping_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.bot,
             family_id,
             user_id,
-            f"🛒 {user['full_name']} добавил(а) в «{item['list_name']}»: {item['title']}",
+            f"🛒 {preferred_display_name(user)} добавил(а) в «{item['list_name']}»: {item['title']}",
         )
         await update.message.reply_text("Добавлено ✅ Отправьте ещё товар или нажмите «❌ Отмена».")
         await _show_list_screen(update, list_id)

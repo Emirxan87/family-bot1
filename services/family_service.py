@@ -3,6 +3,7 @@ import logging
 from repos.family_repo import FamilyRepo
 from repos.shopping_repo import ShoppingRepo
 from repos.users_repo import UsersRepo
+from utils.display_name import preferred_display_name
 
 logger = logging.getLogger(__name__)
 
@@ -93,11 +94,17 @@ class FamilyService:
         self.users_repo.update_role(telegram_id, role_key, role_label)
 
     def role_label(self, member) -> str:
-        return member["role_label"] or "Участник"
+        role = member["role_label"] if "role_label" in member.keys() else None
+        if role and str(role).strip():
+            return str(role).strip()
+        return "Участник"
+
+    def member_display_name(self, member) -> str:
+        return preferred_display_name(member)
 
     def member_line(self, member) -> str:
         crown = "👑 " if member["is_admin"] else ""
-        return f"{crown}{member['full_name']} — {self.role_label(member)}"
+        return f"{crown}{self.member_display_name(member)}"
 
     def is_admin(self, telegram_id: int) -> bool:
         user = self.users_repo.get_user(telegram_id)

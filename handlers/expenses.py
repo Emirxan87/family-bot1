@@ -19,6 +19,7 @@ from repos.states_repo import StatesRepo
 from repos.users_repo import UsersRepo
 from services.activity_service import ActivityService
 from services.expense_service import ExpenseService
+from utils.display_name import preferred_display_name
 from states import (
     ADDING_EXPENSE_ACTOR,
     ADDING_EXPENSE_AMOUNT,
@@ -193,11 +194,11 @@ async def _ask_actor(update: Update, user_id: int, family_id: int, payload: dict
         await update.message.reply_text("В семье только один участник — менять некого.", reply_markup=after_save_keyboard(payload["operation_type"]))
         return
 
-    payload["member_map"] = {member["full_name"]: member["telegram_id"] for member in members}
+    payload["member_map"] = {preferred_display_name(member): member["telegram_id"] for member in members}
     states_repo.set_state(user_id, ADDING_EXPENSE_ACTOR, payload)
     await update.message.reply_text(
         "Выберите участника:",
-        reply_markup=who_keyboard([member["full_name"] for member in members]),
+        reply_markup=who_keyboard(list(payload["member_map"].keys())),
     )
 
 

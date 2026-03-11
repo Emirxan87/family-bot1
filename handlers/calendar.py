@@ -19,6 +19,7 @@ from repos.users_repo import UsersRepo
 from services.activity_service import ActivityService
 from services.calendar_service import CalendarService
 from services.notification_service import NotificationService
+from utils.display_name import preferred_display_name
 from states import (
     ADDING_EVENT_DATE,
     ADDING_EVENT_DATE_CUSTOM,
@@ -189,7 +190,7 @@ async def calendar_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if not members:
                 await update.message.reply_text("Других участников пока нет. Выберите «На меня» или «Общее».", reply_markup=event_participant_keyboard())
                 return
-            payload["member_map"] = {m["full_name"]: m["telegram_id"] for m in members}
+            payload["member_map"] = {preferred_display_name(m): m["telegram_id"] for m in members}
             states_repo.set_state(user_id, ADDING_EVENT_PARTICIPANT_CUSTOM, payload)
             await update.message.reply_text("Выберите участника:", reply_markup=members_keyboard(list(payload["member_map"].keys())))
             return
@@ -241,7 +242,7 @@ async def _save_event(update: Update, context: ContextTypes.DEFAULT_TYPE, user, 
         context.bot,
         user["family_id"],
         user["telegram_id"],
-        f"📅 {user['full_name']} добавил(а) событие: {payload['title']} ({payload['event_date']})",
+        f"📅 {preferred_display_name(user)} добавил(а) событие: {payload['title']} ({payload['event_date']})",
     )
     states_repo.clear_state(user["telegram_id"])
     await update.message.reply_text(
