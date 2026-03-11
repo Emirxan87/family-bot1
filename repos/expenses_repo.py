@@ -24,9 +24,10 @@ class ExpensesRepo:
                     amount,
                     category,
                     subcategory,
-                    comment
+                    comment,
+                    created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 """,
                 (family_id, created_by, actor_id, operation_type, amount, category, subcategory, comment),
             )
