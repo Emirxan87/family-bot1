@@ -27,7 +27,7 @@ def family_role_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         [
             [KeyboardButton("👨 Папа"), KeyboardButton("👩 Мама")],
-            [KeyboardButton("👧 Дочка"), KeyboardButton("👦 Сын")],
+            [KeyboardButton("👧 Дочь"), KeyboardButton("👦 Сын")],
             [KeyboardButton("👵 Бабушка"), KeyboardButton("👴 Дедушка")],
             [KeyboardButton("✏️ Свое название")],
             [KeyboardButton("⬅️ Назад")],

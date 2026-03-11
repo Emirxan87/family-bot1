@@ -49,7 +49,7 @@ class CalendarRepo:
                 """
                 SELECT
                     e.*,
-                    COALESCE(NULLIF(TRIM(creator.role_label), ''), NULLIF(TRIM(creator.full_name), ''), 'Участник') AS creator_name,
+                    COALESCE(NULLIF(TRIM(creator.role_label), ''), 'Участник') AS creator_name,
                     COALESCE(NULLIF(TRIM(participant.role_label), ''), NULLIF(TRIM(participant.full_name), ''), 'Участник') AS participant_name
                 FROM events e
                 JOIN users creator ON creator.telegram_id = e.created_by

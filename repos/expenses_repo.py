@@ -53,8 +53,8 @@ class ExpensesRepo:
                 """
                 SELECT
                     e.*,
-                    COALESCE(NULLIF(TRIM(creator.role_label), ''), NULLIF(TRIM(creator.full_name), ''), 'Участник') AS creator_name,
-                    COALESCE(NULLIF(TRIM(actor.role_label), ''), NULLIF(TRIM(actor.full_name), ''), 'Участник') AS actor_name
+                    COALESCE(NULLIF(TRIM(creator.role_label), ''), 'Участник') AS creator_name,
+                    COALESCE(NULLIF(TRIM(actor.role_label), ''), 'Участник') AS actor_name
                 FROM expenses e
                 JOIN users creator ON creator.telegram_id = e.created_by
                 LEFT JOIN users actor ON actor.telegram_id = e.actor_id
@@ -96,7 +96,7 @@ class ExpensesRepo:
                 """
                 SELECT
                     e.operation_type,
-                    CASE WHEN e.actor_id IS NULL THEN '👨‍👩‍👧 Общее' ELSE COALESCE(NULLIF(TRIM(u.role_label), ''), NULLIF(TRIM(u.full_name), ''), 'Участник') END AS actor_name,
+                    CASE WHEN e.actor_id IS NULL THEN 'Общее' ELSE COALESCE(NULLIF(TRIM(u.role_label), ''), 'Участник') END AS actor_name,
                     ROUND(SUM(e.amount), 2) AS total
                 FROM expenses e
                 LEFT JOIN users u ON u.telegram_id = e.actor_id

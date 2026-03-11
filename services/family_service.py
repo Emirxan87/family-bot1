@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 ROLE_PRESETS = {
     "👨 Папа": ("father", "Папа"),
     "👩 Мама": ("mother", "Мама"),
-    "👧 Дочка": ("daughter", "Дочка"),
+    "👧 Дочь": ("daughter", "Дочь"),
     "👦 Сын": ("son", "Сын"),
     "👵 Бабушка": ("grandmother", "Бабушка"),
     "👴 Дедушка": ("grandfather", "Дедушка"),
@@ -54,9 +54,7 @@ class FamilyService:
         family = self.ensure_family_invite_code(family)
         self.users_repo.set_family(telegram_id, family["id"])
         self.users_repo.set_admin(telegram_id, True)
-        user = self.users_repo.get_user(telegram_id)
-        fallback_name = (user["full_name"] if user else "Родитель")
-        self.users_repo.update_role(telegram_id, "custom", fallback_name)
+        self.users_repo.update_role(telegram_id, "custom", "Участник")
         self.shopping_repo.ensure_default_lists(family["id"], telegram_id)
         return family
 
@@ -69,7 +67,7 @@ class FamilyService:
         self.users_repo.set_admin(telegram_id, False)
         user = self.users_repo.get_user(telegram_id)
         if user and not user["role_label"]:
-            self.users_repo.update_role(telegram_id, "custom", user["full_name"])
+            self.users_repo.update_role(telegram_id, "custom", "Участник")
         self.shopping_repo.ensure_default_lists(family["id"], telegram_id)
         return family
 

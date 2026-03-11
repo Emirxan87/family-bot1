@@ -51,7 +51,7 @@ class ExpenseService:
         lines = ["💳 Последние операции:"]
         for row in rows:
             icon = "➖" if row["operation_type"] == "expense" else "➕"
-            actor = row["actor_name"] or "👨‍👩‍👧 Общее"
+            actor = row["actor_name"] or "Общее"
             sub = f" → {row['subcategory']}" if row["subcategory"] else ""
             comment = f" — {row['comment']}" if row["comment"] else ""
             lines.append(

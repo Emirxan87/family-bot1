@@ -2,30 +2,26 @@ from telegram import KeyboardButton, ReplyKeyboardMarkup
 
 
 EXPENSE_CATEGORIES = [
-    "🛒 Продукты",
+    "🛒 Еда",
     "🏠 Дом",
     "🚕 Транспорт",
     "👶 Дети",
     "💊 Здоровье",
-    "☕ Кафе",
-    "🎉 Развлечения",
+    "🎉 Досуг",
+    "💸 Долги",
     "📦 Прочее",
 ]
 
 EXPENSE_OTHER_SUBCATEGORIES = [
     "👕 Одежда",
-    "💄 Красота и уход",
-    "🐾 Животные",
-    "📚 Образование",
-    "🎁 Подарки",
-    "📱 Связь и интернет",
-    "🔌 Коммунальные",
+    "📱 Связь",
+    "🔌 Коммуналка",
     "🚗 Авто",
-    "✈️ Путешествия",
-    "💼 Работа",
+    "✈️ Поездки",
+    "🎁 Подарки",
+    "🐾 Животные",
     "🧾 Подписки",
-    "🏛 Налоги и платежи",
-    "❓ Не подходит ни под одну",
+    "❓ Другое",
 ]
 
 INCOME_CATEGORIES = [
@@ -33,7 +29,7 @@ INCOME_CATEGORIES = [
     "💸 Подработка",
     "🎁 Подарок",
     "🔁 Возврат",
-    "🛍 Продажа",
+    "🏦 Проценты",
     "📦 Прочее",
 ]
 
@@ -41,12 +37,10 @@ INCOME_OTHER_SUBCATEGORIES = [
     "🪙 Премия",
     "🧑‍💻 Фриланс",
     "💳 Кэшбэк",
-    "🏦 Проценты / вклад",
-    "🏠 Аренда / пассивный доход",
+    "🏠 Аренда",
     "🤝 Возврат долга",
-    "🏛 Соцвыплаты",
-    "👨‍👩‍👧 Перевод в семью",
-    "❓ Не подходит ни под одну",
+    "🏛 Выплаты",
+    "❓ Другое",
 ]
 
 
@@ -97,13 +91,12 @@ def other_subcategories_keyboard(operation_type: str):
 
 
 def after_save_keyboard(operation_type: str):
-    who_text = "👤 Кто потратил" if operation_type == "expense" else "👤 Кто получил"
     add_more_text = "➕ Ещё расход" if operation_type == "expense" else "➕ Ещё поступление"
     return ReplyKeyboardMarkup(
         [
-            [KeyboardButton(who_text), KeyboardButton("💬 Комментарий")],
-            [KeyboardButton(add_more_text), KeyboardButton("📊 Статистика")],
-            [KeyboardButton("🏠 Главное меню"), KeyboardButton("❌ Отмена")],
+            [KeyboardButton(add_more_text), KeyboardButton("💬 Комментарий")],
+            [KeyboardButton("📊 Статистика"), KeyboardButton("🏠 Главное меню")],
+            [KeyboardButton("❌ Отмена")],
         ],
         resize_keyboard=True,
     )
@@ -112,7 +105,7 @@ def after_save_keyboard(operation_type: str):
 def who_keyboard(members: list[str], include_family_shared: bool = True):
     rows = [[KeyboardButton(name)] for name in members]
     if include_family_shared:
-        rows.append([KeyboardButton("👨‍👩‍👧 Общее")])
+        rows.append([KeyboardButton("👨‍👩‍👧‍👦 Общее")])
     rows.append([KeyboardButton("⬅️ Назад"), KeyboardButton("❌ Отмена")])
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
