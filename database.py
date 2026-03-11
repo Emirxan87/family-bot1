@@ -75,18 +75,32 @@ def _ensure_timestamp_column(
 
 
 def _ensure_users_full_name(conn: sqlite3.Connection, applied_migrations: list[str]) -> None:
-    if not _table_exists(conn, "users") or _column_exists(conn, "users", "full_name"):
+    if not _table_exists(conn, "users"):
         return
 
-    conn.execute("ALTER TABLE users ADD COLUMN full_name TEXT")
-    conn.execute(
-        """
-        UPDATE users
-        SET full_name = COALESCE(NULLIF(username, ''), 'Участник семьи')
-        WHERE full_name IS NULL OR TRIM(full_name) = ''
-        """
-    )
-    applied_migrations.append("users.full_name")
+    users_has_username = _column_exists(conn, "users", "username")
+    users_has_full_name = _column_exists(conn, "users", "full_name")
+
+    if not users_has_full_name:
+        conn.execute("ALTER TABLE users ADD COLUMN full_name TEXT")
+        applied_migrations.append("users.full_name")
+
+    if users_has_username:
+        conn.execute(
+            """
+            UPDATE users
+            SET full_name = COALESCE(NULLIF(username, ''), 'Участник семьи')
+            WHERE full_name IS NULL OR TRIM(full_name) = ''
+            """
+        )
+    else:
+        conn.execute(
+            """
+            UPDATE users
+            SET full_name = 'Участник семьи'
+            WHERE full_name IS NULL OR TRIM(full_name) = ''
+            """
+        )
 
 
 def _run_migrations(conn: sqlite3.Connection) -> list[str]:
@@ -100,8 +114,8 @@ def _run_migrations(conn: sqlite3.Connection) -> list[str]:
     _ensure_timestamp_column(conn, "shopping_items", "created_at", applied_migrations)
 
     # users
-    _ensure_users_full_name(conn, applied_migrations)
     _ensure_column(conn, "users", "username", "TEXT", applied_migrations)
+    _ensure_users_full_name(conn, applied_migrations)
     _ensure_timestamp_column(conn, "users", "created_at", applied_migrations)
 
     # shopping_lists
