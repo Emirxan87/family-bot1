@@ -25,6 +25,7 @@ from states import (
     ADDING_EXPENSE_CATEGORY,
     ADDING_EXPENSE_COMMENT,
     ADDING_EXPENSE_SUBCATEGORY,
+    SELECTING_EXPENSE_STATS_PERIOD,
 )
 from utils.display_name import preferred_display_name
 
@@ -69,11 +70,15 @@ async def expenses_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if text == "📊 Статистика":
-        states_repo.clear_state(user_id)
+        states_repo.set_state(user_id, SELECTING_EXPENSE_STATS_PERIOD, {})
         await update.message.reply_text("Выберите период:", reply_markup=stats_period_keyboard())
         return
 
     if text in STAT_PERIODS:
+        if state != SELECTING_EXPENSE_STATS_PERIOD:
+            await update.message.reply_text("Откройте сначала раздел «Финансы → Статистика».", reply_markup=expenses_menu_keyboard())
+            return
+        states_repo.clear_state(user_id)
         await update.message.reply_text(
             expense_service.stats_text(user["family_id"], STAT_PERIODS[text]),
             reply_markup=expenses_menu_keyboard(),

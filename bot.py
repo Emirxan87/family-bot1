@@ -40,6 +40,7 @@ from states import (
     ADDING_EXPENSE_CATEGORY,
     ADDING_EXPENSE_COMMENT,
     ADDING_EXPENSE_SUBCATEGORY,
+    SELECTING_EXPENSE_STATS_PERIOD,
     ADDING_SHOPPING_ITEM,
     AWAITING_FAMILY_CUSTOM_ROLE,
     AWAITING_FAMILY_ROLE,
@@ -145,6 +146,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ADDING_EXPENSE_AMOUNT,
         ADDING_EXPENSE_COMMENT,
         ADDING_EXPENSE_ACTOR,
+        SELECTING_EXPENSE_STATS_PERIOD,
     }
     calendar_states = {
         ADDING_EVENT_TITLE,
@@ -162,6 +164,10 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         states_repo.clear_state(user_id)
     if state in calendar_states and text in MENU_BUTTON_TEXTS and text not in {"❌ Отмена"}:
         states_repo.clear_state(user_id)
+
+    if state == SELECTING_EXPENSE_STATS_PERIOD and text in {"📅 Сегодня", "🗓 7 дней", "📆 Месяц", "📊 Квартал", "📈 Год"}:
+        await expenses_router(update, context)
+        return
 
     if text == "🛒 Покупки":
         await shopping_menu(update, context)
