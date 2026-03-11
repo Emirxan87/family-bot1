@@ -3,9 +3,13 @@ from telegram.ext import ContextTypes
 
 from keyboards.main_menu import main_menu_keyboard
 from keyboards.shopping import (
+    family_bulk_inline,
+    family_items_inline,
     items_inline,
     lists_inline,
+    shopping_bulk_actions_keyboard,
     shopping_confirm_keyboard,
+    shopping_family_actions_keyboard,
     shopping_list_actions_keyboard,
     shopping_menu_keyboard,
 )
@@ -28,6 +32,7 @@ notify_service = NotificationService()
 
 SHOPPING_SYSTEM_BUTTONS = {
     "🛒 Покупки",
+    "🛒 Что купить",
     "📅 Календарь",
     "💰 Расходы",
     "📸 Моменты",
@@ -36,12 +41,16 @@ SHOPPING_SYSTEM_BUTTONS = {
     "🏠 В меню",
     "🏠 Главное меню",
     "📋 Мои списки",
+    "📋 Открыть списки",
     "➕ Добавить товар",
     "✅ Отметить всё купленным",
+    "✅ Отметить несколько",
+    "✅ Готово (0)",
     "♻️ Вернуть всё в активные",
     "🧹 Очистить купленные",
     "🗑 Очистить список",
     "⬅️ Назад",
+    "↩ Назад",
     "❌ Отмена",
     "✅ Подтвердить",
     "✅ Добавить ещё",
@@ -62,6 +71,31 @@ async def _show_list_screen(update: Update, list_id: int):
     await update.message.reply_text(
         "Что дальше?",
         reply_markup=shopping_list_actions_keyboard(),
+    )
+
+
+async def _show_family_screen(update: Update, family_id: int):
+    items = shopping_service.family_active_items(family_id)
+    await update.message.reply_text(
+        shopping_service.render_family_active_items(family_id),
+        reply_markup=family_items_inline(items),
+    )
+    await update.message.reply_text(
+        "Можно быстро закрыть покупки.",
+        reply_markup=shopping_family_actions_keyboard(),
+    )
+
+
+async def _show_bulk_screen(update: Update, family_id: int, selected_ids: list[int]):
+    items = shopping_service.family_active_items(family_id)
+    selected_existing = [i["id"] for i in items if i["id"] in set(selected_ids or [])]
+    await update.message.reply_text(
+        "Выберите несколько товаров:",
+        reply_markup=family_bulk_inline(items, selected_existing),
+    )
+    await update.message.reply_text(
+        f"Выбрано: {len(selected_existing)}",
+        reply_markup=shopping_bulk_actions_keyboard(len(selected_existing)),
     )
 
 
@@ -89,7 +123,9 @@ async def shopping_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state, payload = states_repo.get_state(user_id)
     payload = payload or {}
 
-    if state == ADDING_SHOPPING_ITEM and text in SHOPPING_SYSTEM_BUTTONS:
+    is_system_button = text in SHOPPING_SYSTEM_BUTTONS or text.startswith("✅ Готово (")
+
+    if state == ADDING_SHOPPING_ITEM and is_system_button:
         selected_list_id = payload.get("list_id") if payload else None
         if selected_list_id:
             states_repo.set_state(user_id, "shopping_selected_list", {"list_id": selected_list_id})
@@ -98,9 +134,14 @@ async def shopping_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             states_repo.clear_state(user_id)
             state, payload = None, {}
 
-    if text in {"📋 Мои списки", "🆕 Новый список"}:
+    if text in {"📋 Мои списки", "📋 Открыть списки", "🆕 Новый список"}:
         states_repo.clear_state(user_id)
         await _open_lists(update, family_id)
+        return
+
+    if text in {"🛒 Что купить", "↩ Назад"}:
+        states_repo.set_state(user_id, "shopping_family_view", {})
+        await _show_family_screen(update, family_id)
         return
 
     if text in {"❌ Отмена", "⬅️ Назад"}:
@@ -157,7 +198,26 @@ async def shopping_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _show_list_screen(update, list_id)
         return
 
+    if text == "✅ Отметить несколько":
+        states_repo.set_state(user_id, "shopping_family_bulk", {"selected_ids": []})
+        await _show_bulk_screen(update, family_id, [])
+        return
+
+    if state == "shopping_family_bulk" and text.startswith("✅ Готово"):
+        selected_ids = payload.get("selected_ids") or []
+        changed = shopping_service.mark_family_items_done(family_id, selected_ids, user_id)
+        await update.message.reply_text(f"Готово ✅ Отметил: {changed}")
+        states_repo.set_state(user_id, "shopping_family_view", {})
+        await _show_family_screen(update, family_id)
+        return
+
     if text == "✅ Отметить всё купленным":
+        if state in {"shopping_family_view", "shopping_family_bulk"}:
+            changed = shopping_service.mark_all_family_done(family_id, user_id)
+            await update.message.reply_text(f"Готово ✅ Закрыл все покупки: {changed}")
+            states_repo.set_state(user_id, "shopping_family_view", {})
+            await _show_family_screen(update, family_id)
+            return
         if not selected_list_id:
             await update.message.reply_text("Сначала откройте список через «📋 Мои списки».")
             return

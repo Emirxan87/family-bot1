@@ -71,6 +71,75 @@ class ShoppingRepo:
                 (list_id,),
             ).fetchall()
 
+    def get_family_active_items(self, family_id: int):
+        with get_conn() as conn:
+            return conn.execute(
+                """
+                SELECT i.*, l.family_id, l.name AS list_name,
+                    COALESCE(NULLIF(TRIM(a.role_label), ''), 'Участник') AS added_name,
+                    TRIM(i.title) AS display_title
+                FROM shopping_items i
+                JOIN shopping_lists l ON l.id = i.list_id
+                LEFT JOIN users a ON a.telegram_id = i.added_by
+                WHERE l.family_id = ?
+                  AND i.is_done = 0
+                  AND TRIM(i.title) != ''
+                  AND TRIM(i.title) != 'Без названия'
+                ORDER BY i.id DESC
+                """,
+                (family_id,),
+            ).fetchall()
+
+    def mark_item_done(self, family_id: int, item_id: int, user_id: int):
+        with get_conn() as conn:
+            cur = conn.execute(
+                """
+                UPDATE shopping_items
+                SET is_done = 1, bought_by = ?, updated_at=CURRENT_TIMESTAMP
+                WHERE id = ?
+                  AND is_done = 0
+                  AND list_id IN (
+                      SELECT id FROM shopping_lists WHERE family_id = ?
+                  )
+                """,
+                (user_id, item_id, family_id),
+            )
+            return cur.rowcount
+
+    def mark_items_done(self, family_id: int, item_ids: list[int], user_id: int):
+        if not item_ids:
+            return 0
+        placeholders = ",".join("?" for _ in item_ids)
+        with get_conn() as conn:
+            cur = conn.execute(
+                f"""
+                UPDATE shopping_items
+                SET is_done = 1, bought_by = ?, updated_at=CURRENT_TIMESTAMP
+                WHERE is_done = 0
+                  AND id IN ({placeholders})
+                  AND list_id IN (
+                      SELECT id FROM shopping_lists WHERE family_id = ?
+                  )
+                """,
+                [user_id, *item_ids, family_id],
+            )
+            return cur.rowcount
+
+    def mark_all_family_done(self, family_id: int, user_id: int):
+        with get_conn() as conn:
+            cur = conn.execute(
+                """
+                UPDATE shopping_items
+                SET is_done = 1, bought_by = ?, updated_at=CURRENT_TIMESTAMP
+                WHERE is_done = 0
+                  AND list_id IN (
+                      SELECT id FROM shopping_lists WHERE family_id = ?
+                  )
+                """,
+                (user_id, family_id),
+            )
+            return cur.rowcount
+
     def toggle_item(self, item_id: int, user_id: int):
         with get_conn() as conn:
             row = conn.execute("SELECT * FROM shopping_items WHERE id = ?", (item_id,)).fetchone()

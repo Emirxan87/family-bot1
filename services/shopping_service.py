@@ -49,3 +49,26 @@ class ShoppingService:
 
     def clear_list(self, list_id: int) -> int:
         return self.repo.clear_list(list_id)
+
+    def family_active_items(self, family_id: int):
+        return self.repo.get_family_active_items(family_id)
+
+    def render_family_active_items(self, family_id: int) -> str:
+        items = self.repo.get_family_active_items(family_id)
+        lines = ["🛒 Что купить сейчас"]
+        if not items:
+            lines.append("Сейчас всё куплено ✅")
+            return "\n".join(lines)
+        for i in items:
+            who = f" · {i['added_name']}" if i['added_name'] else ""
+            lines.append(f"⬜ {i['display_title']} — {i['list_name']}{who}")
+        return "\n".join(lines)
+
+    def mark_family_item_done(self, family_id: int, item_id: int, user_id: int) -> int:
+        return self.repo.mark_item_done(family_id, item_id, user_id)
+
+    def mark_family_items_done(self, family_id: int, item_ids: list[int], user_id: int) -> int:
+        return self.repo.mark_items_done(family_id, item_ids, user_id)
+
+    def mark_all_family_done(self, family_id: int, user_id: int) -> int:
+        return self.repo.mark_all_family_done(family_id, user_id)
