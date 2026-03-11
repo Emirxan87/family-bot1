@@ -38,6 +38,19 @@ def _role_saved_text(role_label: str, onboarding: bool) -> str:
     return "Роль обновлена ✅"
 
 
+def _can_manage_member_role(actor_id: int, target_id: int, is_admin: bool) -> bool:
+    return actor_id == target_id or is_admin
+
+
+def _target_role_saved_text(actor_id: int, target_member, role_label: str, onboarding: bool) -> str:
+    if onboarding:
+        return _role_saved_text(role_label, onboarding=True)
+    if target_member and actor_id != target_member["telegram_id"]:
+        display_name = family_service.member_display_name(target_member)
+        return f"Готово ✅ Теперь {display_name}: {role_label.strip()}"
+    return "Готово ✅ Роль изменена"
+
+
 def _role_saved_keyboard(onboarding: bool):
     if onboarding:
         return main_menu_keyboard()
@@ -117,18 +130,19 @@ async def family_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         if state == AWAITING_FAMILY_ROLE and payload.get("mode") == "choose_member":
-            _, family, members = family_service.user_family(user_id)
+            requester, family, members = family_service.user_family(user_id)
             if not family:
                 states_repo.clear_state(user_id)
                 await _show_no_family(update)
                 return
+            is_admin = bool(requester and requester["is_admin"])
             if not text.isdigit() or not (1 <= int(text) <= len(members)):
                 await update.message.reply_text("Введите номер участника")
                 return
             member = members[int(text) - 1]
-            if member["telegram_id"] != user_id and not family_service.is_admin(user_id):
+            if not _can_manage_member_role(user_id, member["telegram_id"], is_admin):
                 states_repo.clear_state(user_id)
-                await update.message.reply_text("Можно менять только свою роль")
+                await update.message.reply_text("Можно менять только свою роль. Чужие роли доступны администратору семьи.")
                 return
             if member["telegram_id"] == user_id:
                 states_repo.set_state(user_id, AWAITING_FAMILY_ROLE, {"mode": "set_role", "target": user_id})
@@ -143,6 +157,10 @@ async def family_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if state == AWAITING_FAMILY_ROLE and payload.get("mode") == "member_actions":
             target = payload.get("target")
+            if not family_service.can_manage_role(user_id, target):
+                states_repo.clear_state(user_id)
+                await update.message.reply_text("Можно управлять только своей ролью", reply_markup=family_manage_keyboard())
+                return
             if text == "✏️ Изменить роль":
                 states_repo.set_state(user_id, AWAITING_FAMILY_ROLE, {"mode": "set_role", "target": target})
                 await update.message.reply_text("Выберите роль", reply_markup=family_role_keyboard())
@@ -163,6 +181,10 @@ async def family_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if state == AWAITING_FAMILY_ROLE and payload.get("mode") == "set_role":
             target = payload.get("target", user_id)
             onboarding = _is_onboarding_flow(payload)
+            if not family_service.can_manage_role(user_id, target):
+                states_repo.clear_state(user_id)
+                await update.message.reply_text("Можно менять только свою роль", reply_markup=family_manage_keyboard())
+                return
             if text == "✏️ Свое название":
                 states_repo.set_state(
                     user_id,
@@ -176,9 +198,10 @@ async def family_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             role_data = ROLE_PRESETS.get(text)
             if role_data:
                 family_service.update_role(target, role_data[0], role_data[1])
+                target_member = family_service.users_repo.get_user(target)
                 states_repo.clear_state(user_id)
                 await update.message.reply_text(
-                    _role_saved_text(role_data[1], onboarding),
+                    _target_role_saved_text(user_id, target_member, role_data[1], onboarding),
                     reply_markup=_role_saved_keyboard(onboarding),
                 )
                 return
@@ -186,6 +209,10 @@ async def family_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if state == AWAITING_FAMILY_CUSTOM_ROLE:
             target = payload.get("target", user_id)
             onboarding = _is_onboarding_flow(payload)
+            if not family_service.can_manage_role(user_id, target):
+                states_repo.clear_state(user_id)
+                await update.message.reply_text("Можно менять только свою роль", reply_markup=family_manage_keyboard())
+                return
             role = _sanitize_custom_role(text)
             if not role:
                 await update.message.reply_text("Название не должно быть пустым. Напишите роль словами.")
@@ -196,9 +223,10 @@ async def family_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 return
             family_service.update_role(target, "custom", role)
+            target_member = family_service.users_repo.get_user(target)
             states_repo.clear_state(user_id)
             await update.message.reply_text(
-                _role_saved_text(role, onboarding),
+                _target_role_saved_text(user_id, target_member, role, onboarding),
                 reply_markup=_role_saved_keyboard(onboarding),
             )
             return
@@ -234,11 +262,17 @@ async def family_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         if text == "✏️ Роли":
-            _, family, members = family_service.user_family(user_id)
+            requester, family, members = family_service.user_family(user_id)
             if not family:
                 await _show_no_family(update)
                 return
-            lines = ["Кому поменять роль?"] + [f"{i}. {family_service.member_line(m)}" for i, m in enumerate(members, 1)]
+            is_admin = bool(requester and requester["is_admin"])
+            if not is_admin:
+                members = [member for member in members if member["telegram_id"] == user_id]
+                lines = ["Вы можете изменить только свою роль:"]
+            else:
+                lines = ["Кому поменять роль?"]
+            lines.extend([f"{i}. {family_service.member_line(m)}" for i, m in enumerate(members, 1)])
             states_repo.set_state(user_id, AWAITING_FAMILY_ROLE, {"mode": "choose_member"})
             await update.message.reply_text("\n".join(lines), reply_markup=family_manage_keyboard())
             return

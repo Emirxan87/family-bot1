@@ -107,3 +107,12 @@ class FamilyService:
     def is_admin(self, telegram_id: int) -> bool:
         user = self.users_repo.get_user(telegram_id)
         return bool(user and user["is_admin"] and user["family_id"])
+
+    def can_manage_role(self, actor_id: int, target_id: int) -> bool:
+        actor = self.users_repo.get_user(actor_id)
+        if not actor or not actor["family_id"]:
+            return False
+        target = self.users_repo.get_user(target_id)
+        if not target or target["family_id"] != actor["family_id"]:
+            return False
+        return actor_id == target_id or bool(actor["is_admin"])
