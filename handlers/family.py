@@ -17,12 +17,22 @@ states_repo = StatesRepo()
 
 
 def _invite_text(bot_username: str | None, family) -> str:
-    link = family_service.deep_link(bot_username, family["invite_code"])
+    safe_family = family_service.ensure_family_invite_code(family)
+    if not safe_family or "invite_code" not in safe_family.keys() or not safe_family["invite_code"]:
+        logger.error(
+            "Unable to render invite link: missing invite_code. family_id=%s keys=%s",
+            safe_family["id"] if safe_family and "id" in safe_family.keys() else None,
+            list(safe_family.keys()) if safe_family else [],
+        )
+        return "Ссылка приглашения временно недоступна. Попробуйте обновить код позже."
+
+    code = safe_family["invite_code"]
+    link = family_service.deep_link(bot_username, code)
     return (
         "Отправьте эту ссылку члену семьи:\n"
         f"{link}\n\n"
         "Если ссылка не сработает, можно ввести код:\n"
-        f"{family['invite_code']}"
+        f"{code}"
     )
 
 

@@ -1,5 +1,7 @@
 import sqlite3
 import logging
+import secrets
+import string
 from contextlib import contextmanager
 
 from config import DB_PATH
@@ -89,6 +91,44 @@ def _ensure_users_full_name(conn: sqlite3.Connection, applied_migrations: list[s
     applied_migrations.append("users.full_name")
 
 
+def _new_invite_code() -> str:
+    alphabet = string.ascii_uppercase + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(6))
+
+
+def _unique_invite_code(conn: sqlite3.Connection) -> str:
+    code = _new_invite_code()
+    while conn.execute("SELECT 1 FROM families WHERE invite_code = ?", (code,)).fetchone():
+        code = _new_invite_code()
+    return code
+
+
+def _ensure_families_invite_code(conn: sqlite3.Connection, applied_migrations: list[str]) -> None:
+    if not _table_exists(conn, "families"):
+        return
+
+    if not _column_exists(conn, "families", "invite_code"):
+        conn.execute("ALTER TABLE families ADD COLUMN invite_code TEXT")
+        applied_migrations.append("families.invite_code")
+
+    families_without_code = conn.execute(
+        """
+        SELECT id
+        FROM families
+        WHERE invite_code IS NULL OR TRIM(invite_code) = ''
+        """
+    ).fetchall()
+    for row in families_without_code:
+        conn.execute(
+            "UPDATE families SET invite_code = ? WHERE id = ?",
+            (_unique_invite_code(conn), row["id"]),
+        )
+
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_families_invite_code ON families(invite_code)"
+    )
+
+
 def _ensure_shopping_items_title(conn: sqlite3.Connection, applied_migrations: list[str]) -> None:
     if not _table_exists(conn, "shopping_items") or _column_exists(conn, "shopping_items", "title"):
         return
@@ -118,6 +158,9 @@ def _ensure_shopping_items_title(conn: sqlite3.Connection, applied_migrations: l
 
 def _run_migrations(conn: sqlite3.Connection) -> list[str]:
     applied_migrations: list[str] = []
+
+    # families
+    _ensure_families_invite_code(conn, applied_migrations)
 
     # shopping_items (legacy compatibility)
     _ensure_shopping_items_title(conn, applied_migrations)
@@ -194,6 +237,7 @@ def _table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
 
 def _log_schema_health(conn: sqlite3.Connection) -> None:
     expected_columns = {
+        "families": {"id", "name", "invite_code", "created_at"},
         "users": {"telegram_id", "family_id", "full_name", "username", "role_key", "role_label", "is_admin", "created_at"},
         "shopping_lists": {"id", "family_id", "name", "created_by", "created_at"},
         "shopping_items": {"id", "list_id", "title", "added_by", "bought_by", "is_done", "created_at", "updated_at"},
@@ -215,7 +259,9 @@ def _log_schema_health(conn: sqlite3.Connection) -> None:
             logger.warning("Schema check: table '%s' is missing columns: %s", table_name, ", ".join(missing))
 
     users_columns = sorted(_table_columns(conn, "users"))
+    families_columns = sorted(_table_columns(conn, "families"))
     logger.info("users schema columns: %s", ", ".join(users_columns))
+    logger.info("families schema columns: %s", ", ".join(families_columns))
 
 
 def init_db() -> None:
