@@ -20,6 +20,29 @@ family_service = FamilyService()
 activity_service = ActivityService()
 states_repo = StatesRepo()
 
+MAX_CUSTOM_ROLE_LEN = 40
+
+
+def _sanitize_custom_role(raw_text: str) -> str:
+    return " ".join((raw_text or "").split())
+
+
+def _is_onboarding_flow(payload: dict) -> bool:
+    return payload.get("source") == "onboarding"
+
+
+def _role_saved_text(role_label: str, onboarding: bool) -> str:
+    clean_label = role_label.strip()
+    if onboarding:
+        return f"Готово ✅ Теперь вы в семье как: {clean_label}"
+    return "Роль обновлена ✅"
+
+
+def _role_saved_keyboard(onboarding: bool):
+    if onboarding:
+        return main_menu_keyboard()
+    return family_manage_keyboard()
+
 
 def _invite_text(bot_username: str | None, family) -> str:
     safe_family = family_service.ensure_family_invite_code(family)
@@ -85,7 +108,11 @@ async def family_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("Код не найден. Попробуйте ещё раз.")
                 return
             activity_service.log(family["id"], user_id, "family_join", "присоединился к семье")
-            states_repo.set_state(user_id, AWAITING_FAMILY_ROLE, {"mode": "set_role", "target": user_id})
+            states_repo.set_state(
+                user_id,
+                AWAITING_FAMILY_ROLE,
+                {"mode": "set_role", "target": user_id, "source": "onboarding"},
+            )
             await update.message.reply_text("Как вас подписать в семье?", reply_markup=family_role_keyboard())
             return
 
@@ -135,26 +162,45 @@ async def family_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if state == AWAITING_FAMILY_ROLE and payload.get("mode") == "set_role":
             target = payload.get("target", user_id)
+            onboarding = _is_onboarding_flow(payload)
             if text == "✏️ Свое название":
-                states_repo.set_state(user_id, AWAITING_FAMILY_CUSTOM_ROLE, {"target": target})
-                await update.message.reply_text("Напишите роль: например Тетя")
+                states_repo.set_state(
+                    user_id,
+                    AWAITING_FAMILY_CUSTOM_ROLE,
+                    {"target": target, "source": payload.get("source")},
+                )
+                await update.message.reply_text(
+                    f"Напишите, как вас подписать в семье (до {MAX_CUSTOM_ROLE_LEN} символов)",
+                )
                 return
             role_data = ROLE_PRESETS.get(text)
             if role_data:
                 family_service.update_role(target, role_data[0], role_data[1])
                 states_repo.clear_state(user_id)
-                await update.message.reply_text("Роль обновлена ✅", reply_markup=family_manage_keyboard())
+                await update.message.reply_text(
+                    _role_saved_text(role_data[1], onboarding),
+                    reply_markup=_role_saved_keyboard(onboarding),
+                )
                 return
 
         if state == AWAITING_FAMILY_CUSTOM_ROLE:
             target = payload.get("target", user_id)
-            role = text[:40]
+            onboarding = _is_onboarding_flow(payload)
+            role = _sanitize_custom_role(text)
             if not role:
-                await update.message.reply_text("Напишите короткое название роли")
+                await update.message.reply_text("Название не должно быть пустым. Напишите роль словами.")
+                return
+            if len(role) > MAX_CUSTOM_ROLE_LEN:
+                await update.message.reply_text(
+                    f"Слишком длинно — максимум {MAX_CUSTOM_ROLE_LEN} символов. Попробуйте короче.",
+                )
                 return
             family_service.update_role(target, "custom", role)
             states_repo.clear_state(user_id)
-            await update.message.reply_text("Роль обновлена ✅", reply_markup=family_manage_keyboard())
+            await update.message.reply_text(
+                _role_saved_text(role, onboarding),
+                reply_markup=_role_saved_keyboard(onboarding),
+            )
             return
 
         if text == "➕ Создать семью":
