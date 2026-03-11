@@ -3,7 +3,12 @@ import logging
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from keyboards.family import family_manage_keyboard, family_role_keyboard, family_start_keyboard
+from keyboards.family import (
+    family_manage_keyboard,
+    family_member_actions_keyboard,
+    family_role_keyboard,
+    family_start_keyboard,
+)
 from keyboards.main_menu import main_menu_keyboard
 from repos.states_repo import StatesRepo
 from services.activity_service import ActivityService
@@ -103,7 +108,10 @@ async def family_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("Выберите роль", reply_markup=family_role_keyboard())
                 return
             states_repo.set_state(user_id, AWAITING_FAMILY_ROLE, {"mode": "member_actions", "target": member["telegram_id"]})
-            await update.message.reply_text("Действия: ✏️ Изменить роль / 👑 Назначить админом / 🗑 Удалить из семьи")
+            await update.message.reply_text(
+                "Выберите действие для участника",
+                reply_markup=family_member_actions_keyboard(),
+            )
             return
 
         if state == AWAITING_FAMILY_ROLE and payload.get("mode") == "member_actions":
@@ -122,6 +130,8 @@ async def family_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 states_repo.clear_state(user_id)
                 await update.message.reply_text("Участник удален из семьи", reply_markup=family_manage_keyboard())
                 return
+            await update.message.reply_text("Нажмите кнопку ниже 👇", reply_markup=family_member_actions_keyboard())
+            return
 
         if state == AWAITING_FAMILY_ROLE and payload.get("mode") == "set_role":
             target = payload.get("target", user_id)
