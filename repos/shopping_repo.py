@@ -42,8 +42,8 @@ class ShoppingRepo:
             return conn.execute(
                 """
                 SELECT i.*,
-                    COALESCE(NULLIF(TRIM(a.role_label), ''), NULLIF(TRIM(a.full_name), ''), 'Участник') AS added_name,
-                    COALESCE(NULLIF(TRIM(b.role_label), ''), NULLIF(TRIM(b.full_name), ''), 'Участник') AS bought_name
+                    COALESCE(NULLIF(TRIM(a.role_label), ''), 'Участник') AS added_name,
+                    COALESCE(NULLIF(TRIM(b.role_label), ''), 'Участник') AS bought_name
                 FROM shopping_items i
                 LEFT JOIN users a ON a.telegram_id = i.added_by
                 LEFT JOIN users b ON b.telegram_id = i.bought_by
@@ -58,8 +58,8 @@ class ShoppingRepo:
             return conn.execute(
                 """
                 SELECT i.*,
-                    COALESCE(NULLIF(TRIM(a.role_label), ''), NULLIF(TRIM(a.full_name), ''), 'Участник') AS added_name,
-                    COALESCE(NULLIF(TRIM(b.role_label), ''), NULLIF(TRIM(b.full_name), ''), 'Участник') AS bought_name, TRIM(i.title) AS display_title
+                    COALESCE(NULLIF(TRIM(a.role_label), ''), 'Участник') AS added_name,
+                    COALESCE(NULLIF(TRIM(b.role_label), ''), 'Участник') AS bought_name, TRIM(i.title) AS display_title
                 FROM shopping_items i
                 LEFT JOIN users a ON a.telegram_id = i.added_by
                 LEFT JOIN users b ON b.telegram_id = i.bought_by

@@ -16,8 +16,8 @@ from repos.users_repo import UsersRepo
 from services.activity_service import ActivityService
 from services.notification_service import NotificationService
 from services.shopping_service import ShoppingService
-from utils.display_name import preferred_display_name
 from states import ADDING_SHOPPING_ITEM
+from utils.display_name import preferred_display_name
 
 users_repo = UsersRepo()
 states_repo = StatesRepo()
@@ -33,6 +33,7 @@ SHOPPING_SYSTEM_BUTTONS = {
     "📸 Моменты",
     "👨‍👩‍👧‍👦 Семья",
     "⚙️ Ещё",
+    "🏠 В меню",
     "🏠 Главное меню",
     "📋 Мои списки",
     "➕ Добавить товар",
@@ -43,6 +44,9 @@ SHOPPING_SYSTEM_BUTTONS = {
     "⬅️ Назад",
     "❌ Отмена",
     "✅ Подтвердить",
+    "✅ Добавить ещё",
+    "📖 Открыть список",
+    "🆕 Новый список",
 }
 
 CONFIRM_MARK_ALL_DONE = "mark_all_done"
@@ -56,7 +60,7 @@ async def _show_list_screen(update: Update, list_id: int):
         reply_markup=items_inline(items),
     )
     await update.message.reply_text(
-        "Управление списком:",
+        "Что дальше?",
         reply_markup=shopping_list_actions_keyboard(),
     )
 
@@ -83,35 +87,61 @@ async def shopping_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     family_id = user["family_id"]
 
     state, payload = states_repo.get_state(user_id)
+    payload = payload or {}
 
     if state == ADDING_SHOPPING_ITEM and text in SHOPPING_SYSTEM_BUTTONS:
-        states_repo.clear_state(user_id)
-        state, payload = None, {}
+        selected_list_id = payload.get("list_id") if payload else None
+        if selected_list_id:
+            states_repo.set_state(user_id, "shopping_selected_list", {"list_id": selected_list_id})
+            state, payload = "shopping_selected_list", {"list_id": selected_list_id}
+        else:
+            states_repo.clear_state(user_id)
+            state, payload = None, {}
 
-    if text == "📋 Мои списки":
+    if text in {"📋 Мои списки", "🆕 Новый список"}:
+        states_repo.clear_state(user_id)
         await _open_lists(update, family_id)
         return
 
     if text in {"❌ Отмена", "⬅️ Назад"}:
         states_repo.clear_state(user_id)
-        await update.message.reply_text("Ок, действие отменено.", reply_markup=shopping_menu_keyboard())
+        await update.message.reply_text("Ок 👌", reply_markup=shopping_menu_keyboard())
         return
 
-    if text == "🏠 Главное меню":
+    if text in {"🏠 В меню", "🏠 Главное меню"}:
         states_repo.clear_state(user_id)
         await update.message.reply_text("Главное меню", reply_markup=main_menu_keyboard())
+        return
+
+    selected_list_id = payload.get("list_id")
+
+    if text in {"➕ Добавить товар", "✅ Добавить ещё"}:
+        if selected_list_id:
+            states_repo.set_state(user_id, ADDING_SHOPPING_ITEM, {"list_id": selected_list_id})
+            await update.message.reply_text("Напишите товар одним сообщением.")
+            await update.message.reply_text("Можно отправить сразу следующий товар.", reply_markup=shopping_list_actions_keyboard())
+        else:
+            await update.message.reply_text("Сначала выберите список:", reply_markup=lists_inline(shopping_service.lists(family_id)))
+        return
+
+    if text == "📖 Открыть список":
+        if not selected_list_id:
+            await update.message.reply_text("Сначала выберите список:", reply_markup=lists_inline(shopping_service.lists(family_id)))
+            return
+        states_repo.set_state(user_id, "shopping_selected_list", {"list_id": selected_list_id})
+        await _show_list_screen(update, selected_list_id)
         return
 
     if state == ADDING_SHOPPING_ITEM:
         list_id = payload.get("list_id")
         if not list_id:
             states_repo.clear_state(user_id)
-            await update.message.reply_text("Сессия устарела, начните заново.")
+            await update.message.reply_text("Список не выбран. Нажмите «📋 Мои списки».", reply_markup=shopping_menu_keyboard())
             return
 
         item_id = shopping_service.add_item(list_id, text, user_id)
         if not item_id:
-            await update.message.reply_text("Название товара пустое или служебное. Отправьте другой текст.")
+            await update.message.reply_text("Не понял товар. Напишите короче, например: Молоко")
             return
 
         item = shopping_repo.get_item_by_id(item_id)
@@ -122,52 +152,33 @@ async def shopping_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_id,
             f"🛒 {preferred_display_name(user)} добавил(а) в «{item['list_name']}»: {item['title']}",
         )
-        await update.message.reply_text("Добавлено ✅ Отправьте ещё товар или нажмите «❌ Отмена».")
+        states_repo.set_state(user_id, ADDING_SHOPPING_ITEM, {"list_id": list_id})
+        await update.message.reply_text("Добавил ✅ Что дальше?\n• Ещё товар\n• Открыть список\n• В меню")
         await _show_list_screen(update, list_id)
         return
 
-    if text == "➕ Добавить товар":
-        selected_list_id = payload.get("list_id") if payload else None
-        if selected_list_id:
-            states_repo.set_state(user_id, ADDING_SHOPPING_ITEM, {"list_id": selected_list_id})
-            await update.message.reply_text(
-                "Режим добавления включён. Отправляйте товары по одному.",
-                reply_markup=shopping_list_actions_keyboard(),
-            )
-        else:
-            await update.message.reply_text("Сначала выберите список:", reply_markup=lists_inline(shopping_service.lists(family_id)))
-        return
-
-    selected_list_id = payload.get("list_id") if payload else None
-
     if text == "✅ Отметить всё купленным":
         if not selected_list_id:
-            await update.message.reply_text("Сначала откройте нужный список через «📋 Мои списки».")
+            await update.message.reply_text("Сначала откройте список через «📋 Мои списки».")
             return
         states_repo.set_state(
             user_id,
             "shopping_confirm_action",
             {"list_id": selected_list_id, "action": CONFIRM_MARK_ALL_DONE},
         )
-        await update.message.reply_text(
-            "Подтвердите: отметить ВСЕ товары купленными?",
-            reply_markup=shopping_confirm_keyboard(),
-        )
+        await update.message.reply_text("Отметить весь список купленным?", reply_markup=shopping_confirm_keyboard())
         return
 
     if text == "🗑 Очистить список":
         if not selected_list_id:
-            await update.message.reply_text("Сначала откройте нужный список через «📋 Мои списки».")
+            await update.message.reply_text("Сначала откройте список через «📋 Мои списки».")
             return
         states_repo.set_state(
             user_id,
             "shopping_confirm_action",
             {"list_id": selected_list_id, "action": CONFIRM_CLEAR_LIST},
         )
-        await update.message.reply_text(
-            "Подтвердите: удалить ВСЕ товары из списка?",
-            reply_markup=shopping_confirm_keyboard(),
-        )
+        await update.message.reply_text("Удалить все товары из списка?", reply_markup=shopping_confirm_keyboard())
         return
 
     if state == "shopping_confirm_action" and text == "✅ Подтвердить":
@@ -180,10 +191,10 @@ async def shopping_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if action == CONFIRM_MARK_ALL_DONE:
             changed = shopping_service.mark_all_done(list_id, user_id)
-            await update.message.reply_text(f"Готово ✅ Отмечено: {changed}")
+            await update.message.reply_text(f"Готово ✅ Отметил: {changed}")
         elif action == CONFIRM_CLEAR_LIST:
             changed = shopping_service.clear_list(list_id)
-            await update.message.reply_text(f"Готово ✅ Удалено: {changed}")
+            await update.message.reply_text(f"Готово ✅ Удалил: {changed}")
 
         states_repo.set_state(user_id, "shopping_selected_list", {"list_id": list_id})
         await _show_list_screen(update, list_id)
@@ -191,19 +202,22 @@ async def shopping_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text == "♻️ Вернуть всё в активные":
         if not selected_list_id:
-            await update.message.reply_text("Сначала откройте нужный список через «📋 Мои списки».")
+            await update.message.reply_text("Сначала откройте список через «📋 Мои списки».")
             return
         changed = shopping_service.restore_all_active(selected_list_id)
-        await update.message.reply_text(f"Готово ✅ Возвращено: {changed}")
+        await update.message.reply_text(f"Готово ✅ Вернул: {changed}")
         states_repo.set_state(user_id, "shopping_selected_list", {"list_id": selected_list_id})
         await _show_list_screen(update, selected_list_id)
         return
 
     if text == "🧹 Очистить купленные":
         if not selected_list_id:
-            await update.message.reply_text("Сначала откройте нужный список через «📋 Мои списки».")
+            await update.message.reply_text("Сначала откройте список через «📋 Мои списки».")
             return
         changed = shopping_service.clear_done(selected_list_id)
-        await update.message.reply_text(f"Готово ✅ Удалено купленных: {changed}")
+        await update.message.reply_text(f"Готово ✅ Удалил купленные: {changed}")
         states_repo.set_state(user_id, "shopping_selected_list", {"list_id": selected_list_id})
         await _show_list_screen(update, selected_list_id)
+        return
+
+    await update.message.reply_text("Нажмите кнопку ниже 👇", reply_markup=shopping_menu_keyboard())

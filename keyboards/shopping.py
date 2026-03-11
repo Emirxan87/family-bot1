@@ -5,7 +5,7 @@ def shopping_menu_keyboard():
     return ReplyKeyboardMarkup(
         [
             [KeyboardButton("📋 Мои списки"), KeyboardButton("➕ Добавить товар")],
-            [KeyboardButton("🏠 Главное меню")],
+            [KeyboardButton("🏠 В меню")],
         ],
         resize_keyboard=True,
     )
@@ -18,7 +18,7 @@ def shopping_list_actions_keyboard():
             [KeyboardButton("♻️ Вернуть всё в активные"), KeyboardButton("🧹 Очистить купленные")],
             [KeyboardButton("🗑 Очистить список")],
             [KeyboardButton("📋 Мои списки"), KeyboardButton("⬅️ Назад")],
-            [KeyboardButton("❌ Отмена"), KeyboardButton("🏠 Главное меню")],
+            [KeyboardButton("❌ Отмена"), KeyboardButton("🏠 В меню")],
         ],
         resize_keyboard=True,
     )
@@ -28,7 +28,7 @@ def shopping_confirm_keyboard():
     return ReplyKeyboardMarkup(
         [
             [KeyboardButton("✅ Подтвердить"), KeyboardButton("❌ Отмена")],
-            [KeyboardButton("📋 Мои списки"), KeyboardButton("🏠 Главное меню")],
+            [KeyboardButton("📋 Мои списки"), KeyboardButton("🏠 В меню")],
         ],
         resize_keyboard=True,
     )

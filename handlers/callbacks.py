@@ -33,7 +33,7 @@ async def handle_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
             shopping_service.render_list(list_id), reply_markup=items_inline(items)
         )
         await query.message.reply_text(
-            "Управление списком:",
+            "Что дальше?",
             reply_markup=shopping_list_actions_keyboard(),
         )
         return

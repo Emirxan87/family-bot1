@@ -16,7 +16,7 @@ class ActivityRepo:
         with get_conn() as conn:
             return conn.execute(
                 """
-                SELECT a.*, COALESCE(NULLIF(TRIM(u.role_label), ''), NULLIF(TRIM(u.full_name), ''), 'Участник') AS actor_name
+                SELECT a.*, COALESCE(NULLIF(TRIM(u.role_label), ''), 'Участник') AS actor_name
                 FROM activity_log a
                 JOIN users u ON u.telegram_id = a.actor_id
                 WHERE a.family_id = ?
