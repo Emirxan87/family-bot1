@@ -1,7 +1,11 @@
 import sqlite3
+import logging
 from contextlib import contextmanager
 
 from config import DB_PATH
+
+
+logger = logging.getLogger(__name__)
 
 
 @contextmanager
@@ -34,6 +38,7 @@ def _ensure_column(
     table_name: str,
     column_name: str,
     column_definition: str,
+    applied_migrations: list[str],
 ) -> None:
     if not _table_exists(conn, table_name):
         return
@@ -43,9 +48,15 @@ def _ensure_column(
     conn.execute(
         f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition}"
     )
+    applied_migrations.append(f"{table_name}.{column_name}")
 
 
-def _ensure_timestamp_column(conn: sqlite3.Connection, table_name: str, column_name: str) -> None:
+def _ensure_timestamp_column(
+    conn: sqlite3.Connection,
+    table_name: str,
+    column_name: str,
+    applied_migrations: list[str],
+) -> None:
     """
     Безопасно добавляет timestamp-колонку в существующую SQLite таблицу.
     Нельзя использовать DEFAULT CURRENT_TIMESTAMP в ALTER TABLE,
@@ -60,54 +71,107 @@ def _ensure_timestamp_column(conn: sqlite3.Connection, table_name: str, column_n
     conn.execute(
         f"UPDATE {table_name} SET {column_name} = CURRENT_TIMESTAMP WHERE {column_name} IS NULL"
     )
+    applied_migrations.append(f"{table_name}.{column_name}")
 
 
-def _run_migrations(conn: sqlite3.Connection) -> None:
+def _ensure_users_full_name(conn: sqlite3.Connection, applied_migrations: list[str]) -> None:
+    if not _table_exists(conn, "users") or _column_exists(conn, "users", "full_name"):
+        return
+
+    conn.execute("ALTER TABLE users ADD COLUMN full_name TEXT")
+    conn.execute(
+        """
+        UPDATE users
+        SET full_name = COALESCE(NULLIF(username, ''), 'Участник семьи')
+        WHERE full_name IS NULL OR TRIM(full_name) = ''
+        """
+    )
+    applied_migrations.append("users.full_name")
+
+
+def _run_migrations(conn: sqlite3.Connection) -> list[str]:
+    applied_migrations: list[str] = []
+
     # shopping_items (legacy compatibility)
-    _ensure_column(conn, "shopping_items", "added_by", "INTEGER")
-    _ensure_column(conn, "shopping_items", "bought_by", "INTEGER")
-    _ensure_column(conn, "shopping_items", "is_done", "INTEGER NOT NULL DEFAULT 0")
-    _ensure_timestamp_column(conn, "shopping_items", "updated_at")
-    _ensure_timestamp_column(conn, "shopping_items", "created_at")
+    _ensure_column(conn, "shopping_items", "added_by", "INTEGER", applied_migrations)
+    _ensure_column(conn, "shopping_items", "bought_by", "INTEGER", applied_migrations)
+    _ensure_column(conn, "shopping_items", "is_done", "INTEGER NOT NULL DEFAULT 0", applied_migrations)
+    _ensure_timestamp_column(conn, "shopping_items", "updated_at", applied_migrations)
+    _ensure_timestamp_column(conn, "shopping_items", "created_at", applied_migrations)
 
     # users
-    _ensure_column(conn, "users", "username", "TEXT")
-    _ensure_timestamp_column(conn, "users", "created_at")
+    _ensure_users_full_name(conn, applied_migrations)
+    _ensure_column(conn, "users", "username", "TEXT", applied_migrations)
+    _ensure_timestamp_column(conn, "users", "created_at", applied_migrations)
 
     # shopping_lists
-    _ensure_column(conn, "shopping_lists", "created_by", "INTEGER")
-    _ensure_timestamp_column(conn, "shopping_lists", "created_at")
+    _ensure_column(conn, "shopping_lists", "created_by", "INTEGER", applied_migrations)
+    _ensure_timestamp_column(conn, "shopping_lists", "created_at", applied_migrations)
 
     # events
-    _ensure_column(conn, "events", "event_time", "TEXT")
-    _ensure_column(conn, "events", "is_family", "INTEGER NOT NULL DEFAULT 1")
-    _ensure_timestamp_column(conn, "events", "created_at")
+    _ensure_column(conn, "events", "event_time", "TEXT", applied_migrations)
+    _ensure_column(conn, "events", "is_family", "INTEGER NOT NULL DEFAULT 1", applied_migrations)
+    _ensure_timestamp_column(conn, "events", "created_at", applied_migrations)
 
     # expenses
-    _ensure_column(conn, "expenses", "comment", "TEXT")
-    _ensure_timestamp_column(conn, "expenses", "created_at")
+    _ensure_column(conn, "expenses", "comment", "TEXT", applied_migrations)
+    _ensure_timestamp_column(conn, "expenses", "created_at", applied_migrations)
 
     # activity_log
-    _ensure_column(conn, "activity_log", "details", "TEXT")
-    _ensure_timestamp_column(conn, "activity_log", "created_at")
+    _ensure_column(conn, "activity_log", "details", "TEXT", applied_migrations)
+    _ensure_timestamp_column(conn, "activity_log", "created_at", applied_migrations)
 
     # user_states
-    _ensure_column(conn, "user_states", "payload", "TEXT")
-    _ensure_timestamp_column(conn, "user_states", "updated_at")
+    _ensure_column(conn, "user_states", "payload", "TEXT", applied_migrations)
+    _ensure_timestamp_column(conn, "user_states", "updated_at", applied_migrations)
 
     # locations
-    _ensure_column(conn, "locations", "label", "TEXT")
-    _ensure_timestamp_column(conn, "locations", "created_at")
+    _ensure_column(conn, "locations", "label", "TEXT", applied_migrations)
+    _ensure_timestamp_column(conn, "locations", "created_at", applied_migrations)
 
     # moments
-    _ensure_column(conn, "moments", "caption", "TEXT")
-    _ensure_column(conn, "moments", "latitude", "REAL")
-    _ensure_column(conn, "moments", "longitude", "REAL")
-    _ensure_column(conn, "moments", "city", "TEXT")
-    _ensure_column(conn, "moments", "place", "TEXT")
-    _ensure_column(conn, "moments", "weather", "TEXT")
-    _ensure_column(conn, "moments", "temperature", "REAL")
-    _ensure_timestamp_column(conn, "moments", "created_at")
+    _ensure_column(conn, "moments", "caption", "TEXT", applied_migrations)
+    _ensure_column(conn, "moments", "latitude", "REAL", applied_migrations)
+    _ensure_column(conn, "moments", "longitude", "REAL", applied_migrations)
+    _ensure_column(conn, "moments", "city", "TEXT", applied_migrations)
+    _ensure_column(conn, "moments", "place", "TEXT", applied_migrations)
+    _ensure_column(conn, "moments", "weather", "TEXT", applied_migrations)
+    _ensure_column(conn, "moments", "temperature", "REAL", applied_migrations)
+    _ensure_timestamp_column(conn, "moments", "created_at", applied_migrations)
+
+    return applied_migrations
+
+
+def _table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
+    if not _table_exists(conn, table_name):
+        return set()
+    return {row["name"] for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()}
+
+
+def _log_schema_health(conn: sqlite3.Connection) -> None:
+    expected_columns = {
+        "users": {"telegram_id", "family_id", "full_name", "username", "created_at"},
+        "shopping_lists": {"id", "family_id", "name", "created_by", "created_at"},
+        "shopping_items": {"id", "list_id", "title", "added_by", "bought_by", "is_done", "created_at", "updated_at"},
+        "events": {"id", "family_id", "created_by", "title", "event_date", "event_time", "is_family", "created_at"},
+        "expenses": {"id", "family_id", "created_by", "amount", "category", "comment", "created_at"},
+        "activity_log": {"id", "family_id", "actor_id", "action_type", "details", "created_at"},
+        "user_states": {"telegram_id", "state", "payload", "updated_at"},
+        "locations": {"id", "family_id", "user_id", "latitude", "longitude", "label", "created_at"},
+        "moments": {"id", "family_id", "user_id", "photo_file_id", "caption", "latitude", "longitude", "city", "place", "weather", "temperature", "created_at"},
+    }
+
+    for table_name, expected in expected_columns.items():
+        actual = _table_columns(conn, table_name)
+        if not actual:
+            logger.warning("Schema check: table '%s' not found", table_name)
+            continue
+        missing = sorted(expected - actual)
+        if missing:
+            logger.warning("Schema check: table '%s' is missing columns: %s", table_name, ", ".join(missing))
+
+    users_columns = sorted(_table_columns(conn, "users"))
+    logger.info("users schema columns: %s", ", ".join(users_columns))
 
 
 def init_db() -> None:
@@ -230,7 +294,13 @@ def init_db() -> None:
             """
         )
 
-        _run_migrations(conn)
+        applied_migrations = _run_migrations(conn)
+        if applied_migrations:
+            logger.info("Applied SQLite migrations: %s", ", ".join(applied_migrations))
+        else:
+            logger.info("Applied SQLite migrations: none")
+
+        _log_schema_health(conn)
 
         conn.executescript(
             """

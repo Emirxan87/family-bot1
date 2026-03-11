@@ -30,6 +30,7 @@ from keyboards.main_menu import main_menu_keyboard
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
+logger = logging.getLogger(__name__)
 
 
 async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -72,6 +73,18 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await settings_router(update, context)
 
 
+async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    logger.exception("Unhandled Telegram handler error", exc_info=context.error)
+
+    if isinstance(update, Update) and update.effective_message:
+        try:
+            await update.effective_message.reply_text(
+                "⚠️ Произошла внутренняя ошибка. Попробуйте ещё раз через пару секунд."
+            )
+        except Exception:
+            logger.exception("Failed to send error message to user")
+
+
 def main():
     if not BOT_TOKEN:
         raise RuntimeError("Не найден BOT_TOKEN в переменных окружения.")
@@ -85,6 +98,7 @@ def main():
     app.add_handler(MessageHandler(filters.LOCATION, location_handler))
     app.add_handler(MessageHandler(filters.LOCATION, memory_location_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_router))
+    app.add_error_handler(on_error)
 
     print("Family bot is running")
     app.run_polling()
