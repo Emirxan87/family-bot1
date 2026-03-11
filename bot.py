@@ -74,7 +74,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    logger.error("Unhandled Telegram handler error", exc_info=context.error)
+    logger.exception("Unhandled Telegram handler error", exc_info=context.error)
 
     if isinstance(update, Update) and update.effective_message:
         try:
