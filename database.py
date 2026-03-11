@@ -144,8 +144,13 @@ def _run_migrations(conn: sqlite3.Connection) -> list[str]:
 
     # expenses
     _ensure_column(conn, "expenses", "created_by", "INTEGER", applied_migrations)
+    _ensure_column(conn, "expenses", "actor_id", "INTEGER", applied_migrations)
+    _ensure_column(conn, "expenses", "operation_type", "TEXT NOT NULL DEFAULT 'expense'", applied_migrations)
+    _ensure_column(conn, "expenses", "subcategory", "TEXT", applied_migrations)
     _ensure_column(conn, "expenses", "comment", "TEXT", applied_migrations)
     _ensure_timestamp_column(conn, "expenses", "created_at", applied_migrations)
+    conn.execute("UPDATE expenses SET actor_id = created_by WHERE actor_id IS NULL")
+    conn.execute("UPDATE expenses SET operation_type = 'expense' WHERE operation_type IS NULL OR TRIM(operation_type) = ''")
 
     # activity_log
     _ensure_column(conn, "activity_log", "details", "TEXT", applied_migrations)
@@ -184,7 +189,7 @@ def _log_schema_health(conn: sqlite3.Connection) -> None:
         "shopping_lists": {"id", "family_id", "name", "created_by", "created_at"},
         "shopping_items": {"id", "list_id", "title", "added_by", "bought_by", "is_done", "created_at", "updated_at"},
         "events": {"id", "family_id", "created_by", "title", "event_date", "event_time", "is_family", "created_at"},
-        "expenses": {"id", "family_id", "created_by", "amount", "category", "comment", "created_at"},
+        "expenses": {"id", "family_id", "created_by", "actor_id", "operation_type", "amount", "category", "subcategory", "comment", "created_at"},
         "activity_log": {"id", "family_id", "actor_id", "action_type", "details", "created_at"},
         "user_states": {"telegram_id", "state", "payload", "updated_at"},
         "locations": {"id", "family_id", "user_id", "latitude", "longitude", "label", "created_at"},
@@ -266,12 +271,16 @@ def init_db() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 family_id INTEGER NOT NULL,
                 created_by INTEGER NOT NULL,
+                actor_id INTEGER,
+                operation_type TEXT NOT NULL DEFAULT 'expense',
                 amount REAL NOT NULL,
                 category TEXT NOT NULL,
+                subcategory TEXT,
                 comment TEXT,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE,
-                FOREIGN KEY (created_by) REFERENCES users(telegram_id) ON DELETE CASCADE
+                FOREIGN KEY (created_by) REFERENCES users(telegram_id) ON DELETE CASCADE,
+                FOREIGN KEY (actor_id) REFERENCES users(telegram_id) ON DELETE SET NULL
             );
 
             CREATE TABLE IF NOT EXISTS activity_log (
@@ -348,6 +357,12 @@ def init_db() -> None:
 
             CREATE INDEX IF NOT EXISTS idx_expenses_family_created
             ON expenses(family_id, created_at);
+
+            CREATE INDEX IF NOT EXISTS idx_expenses_family_type_created
+            ON expenses(family_id, operation_type, created_at);
+
+            CREATE INDEX IF NOT EXISTS idx_expenses_family_actor
+            ON expenses(family_id, actor_id);
 
             CREATE INDEX IF NOT EXISTS idx_activity_family_created
             ON activity_log(family_id, created_at);

@@ -2,42 +2,108 @@ from database import get_conn
 
 
 class ExpensesRepo:
-    def add_expense(self, family_id: int, user_id: int, amount: float, category: str, comment: str) -> None:
+    def add_operation(
+        self,
+        family_id: int,
+        created_by: int,
+        actor_id: int | None,
+        operation_type: str,
+        amount: float,
+        category: str,
+        subcategory: str | None,
+        comment: str | None,
+    ) -> int:
+        with get_conn() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO expenses(
+                    family_id,
+                    created_by,
+                    actor_id,
+                    operation_type,
+                    amount,
+                    category,
+                    subcategory,
+                    comment
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (family_id, created_by, actor_id, operation_type, amount, category, subcategory, comment),
+            )
+            return int(cursor.lastrowid)
+
+    def update_comment(self, expense_id: int, family_id: int, comment: str) -> None:
         with get_conn() as conn:
             conn.execute(
-                """
-                INSERT INTO expenses(family_id, created_by, amount, category, comment)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (family_id, user_id, amount, category, comment),
+                "UPDATE expenses SET comment = ? WHERE id = ? AND family_id = ?",
+                (comment, expense_id, family_id),
+            )
+
+    def update_actor(self, expense_id: int, family_id: int, actor_id: int | None) -> None:
+        with get_conn() as conn:
+            conn.execute(
+                "UPDATE expenses SET actor_id = ? WHERE id = ? AND family_id = ?",
+                (actor_id, expense_id, family_id),
             )
 
     def latest(self, family_id: int, limit: int = 10):
         with get_conn() as conn:
             return conn.execute(
                 """
-                SELECT e.*, u.full_name
-                FROM expenses e JOIN users u ON u.telegram_id = e.created_by
+                SELECT
+                    e.*,
+                    creator.full_name AS creator_name,
+                    actor.full_name AS actor_name
+                FROM expenses e
+                JOIN users creator ON creator.telegram_id = e.created_by
+                LEFT JOIN users actor ON actor.telegram_id = e.actor_id
                 WHERE e.family_id = ?
                 ORDER BY e.id DESC LIMIT ?
                 """,
                 (family_id, limit),
             ).fetchall()
 
-    def summary(self, family_id: int):
+    def aggregate_by_period(self, family_id: int, start_ts: str):
         with get_conn() as conn:
-            total = conn.execute(
-                "SELECT COALESCE(SUM(amount), 0) AS t FROM expenses WHERE family_id = ?",
-                (family_id,),
-            ).fetchone()["t"]
-            by_cat = conn.execute(
+            totals = conn.execute(
                 """
-                SELECT category, ROUND(SUM(amount), 2) AS t
+                SELECT
+                    operation_type,
+                    ROUND(COALESCE(SUM(amount), 0), 2) AS total
                 FROM expenses
-                WHERE family_id = ?
-                GROUP BY category
-                ORDER BY t DESC
+                WHERE family_id = ? AND datetime(created_at) >= datetime(?)
+                GROUP BY operation_type
                 """,
-                (family_id,),
+                (family_id, start_ts),
             ).fetchall()
-            return total, by_cat
+
+            by_categories = conn.execute(
+                """
+                SELECT
+                    operation_type,
+                    category,
+                    ROUND(SUM(amount), 2) AS total
+                FROM expenses
+                WHERE family_id = ? AND datetime(created_at) >= datetime(?)
+                GROUP BY operation_type, category
+                ORDER BY operation_type, total DESC
+                """,
+                (family_id, start_ts),
+            ).fetchall()
+
+            by_people = conn.execute(
+                """
+                SELECT
+                    e.operation_type,
+                    CASE WHEN e.actor_id IS NULL THEN '👨‍👩‍👧 Общее' ELSE u.full_name END AS actor_name,
+                    ROUND(SUM(e.amount), 2) AS total
+                FROM expenses e
+                LEFT JOIN users u ON u.telegram_id = e.actor_id
+                WHERE e.family_id = ? AND datetime(e.created_at) >= datetime(?)
+                GROUP BY e.operation_type, actor_name
+                ORDER BY e.operation_type, total DESC
+                """,
+                (family_id, start_ts),
+            ).fetchall()
+
+            return totals, by_categories, by_people
