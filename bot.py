@@ -28,12 +28,20 @@ from handlers.start import help_command, start, to_main_menu
 from keyboards.main_menu import main_menu_keyboard
 from repos.states_repo import StatesRepo
 from states import (
+    ADDING_EVENT_DATE,
+    ADDING_EVENT_DATE_CUSTOM,
+    ADDING_EVENT_PARTICIPANT,
+    ADDING_EVENT_PARTICIPANT_CUSTOM,
+    ADDING_EVENT_TIME,
+    ADDING_EVENT_TIME_CUSTOM,
+    ADDING_EVENT_TITLE,
     ADDING_EXPENSE_ACTOR,
     ADDING_EXPENSE_AMOUNT,
     ADDING_EXPENSE_CATEGORY,
     ADDING_EXPENSE_COMMENT,
     ADDING_EXPENSE_SUBCATEGORY,
     ADDING_SHOPPING_ITEM,
+    VIEWING_EVENTS_BY_DATE,
 )
 
 logging.basicConfig(
@@ -60,7 +68,32 @@ MENU_BUTTON_TEXTS = {
     "❌ Отмена",
     "✅ Подтвердить",
     "➕ Добавить событие",
+    "📅 Сегодня",
     "📆 Сегодня",
+    "🌤 Завтра",
+    "📋 Ближайшие 7 дней",
+    "🗓 По дате",
+    "👨‍👩‍👧 Все семейные события",
+    "📋 К событиям",
+    "➕ Ещё событие",
+    "🔔 Напоминание",
+    "🏥 Врач",
+    "🎂 День рождения",
+    "🏫 Школа / садик",
+    "💼 Работа",
+    "🛒 Покупки / дела",
+    "🚗 Поездка",
+    "🧾 Платёж",
+    "📌 Другое",
+    "🗓 Выбрать дату",
+    "Без времени",
+    "🌅 Утро",
+    "☀️ День",
+    "🌆 Вечер",
+    "⏰ Ввести время",
+    "На меня",
+    "На другого члена семьи",
+    "👨‍👩‍👧 Общее",
     "➖ Расход",
     "➕ Поступление",
     "➕ Ещё расход",
@@ -100,9 +133,21 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ADDING_EXPENSE_COMMENT,
         ADDING_EXPENSE_ACTOR,
     }
+    calendar_states = {
+        ADDING_EVENT_TITLE,
+        ADDING_EVENT_DATE,
+        ADDING_EVENT_DATE_CUSTOM,
+        ADDING_EVENT_TIME,
+        ADDING_EVENT_TIME_CUSTOM,
+        ADDING_EVENT_PARTICIPANT,
+        ADDING_EVENT_PARTICIPANT_CUSTOM,
+        VIEWING_EVENTS_BY_DATE,
+    }
     if state in finance_states and text in MENU_BUTTON_TEXTS:
         states_repo.clear_state(user_id)
     if state == ADDING_SHOPPING_ITEM and text in MENU_BUTTON_TEXTS:
+        states_repo.clear_state(user_id)
+    if state in calendar_states and text in MENU_BUTTON_TEXTS and text not in {"❌ Отмена"}:
         states_repo.clear_state(user_id)
 
     if text == "🛒 Покупки":
@@ -133,7 +178,35 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "✅ Подтвердить",
     }:
         await shopping_router(update, context)
-    elif text in {"➕ Добавить событие", "📆 Сегодня"}:
+    elif text in {
+        "➕ Добавить событие",
+        "📅 Сегодня",
+        "📆 Сегодня",
+        "🌤 Завтра",
+        "📋 Ближайшие 7 дней",
+        "🗓 По дате",
+        "👨‍👩‍👧 Все семейные события",
+        "📋 К событиям",
+        "➕ Ещё событие",
+        "🔔 Напоминание",
+        "🏥 Врач",
+        "🎂 День рождения",
+        "🏫 Школа / садик",
+        "💼 Работа",
+        "🛒 Покупки / дела",
+        "🚗 Поездка",
+        "🧾 Платёж",
+        "📌 Другое",
+        "🗓 Выбрать дату",
+        "Без времени",
+        "🌅 Утро",
+        "☀️ День",
+        "🌆 Вечер",
+        "⏰ Ввести время",
+        "На меня",
+        "На другого члена семьи",
+        "👨‍👩‍👧 Общее",
+    }:
         await calendar_router(update, context)
     elif text in {
         "➖ Расход",

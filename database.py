@@ -138,9 +138,15 @@ def _run_migrations(conn: sqlite3.Connection) -> list[str]:
 
     # events
     _ensure_column(conn, "events", "created_by", "INTEGER", applied_migrations)
+    _ensure_column(conn, "events", "creator_user_id", "INTEGER", applied_migrations)
+    _ensure_column(conn, "events", "participant_user_id", "INTEGER", applied_migrations)
+    _ensure_column(conn, "events", "event_type", "TEXT", applied_migrations)
+    _ensure_column(conn, "events", "description", "TEXT", applied_migrations)
     _ensure_column(conn, "events", "event_time", "TEXT", applied_migrations)
     _ensure_column(conn, "events", "is_family", "INTEGER NOT NULL DEFAULT 1", applied_migrations)
     _ensure_timestamp_column(conn, "events", "created_at", applied_migrations)
+    conn.execute("UPDATE events SET creator_user_id = created_by WHERE creator_user_id IS NULL")
+    conn.execute("UPDATE events SET event_type = title WHERE event_type IS NULL OR TRIM(event_type) = ''")
 
     # expenses
     _ensure_column(conn, "expenses", "created_by", "INTEGER", applied_migrations)
@@ -188,7 +194,7 @@ def _log_schema_health(conn: sqlite3.Connection) -> None:
         "users": {"telegram_id", "family_id", "full_name", "username", "created_at"},
         "shopping_lists": {"id", "family_id", "name", "created_by", "created_at"},
         "shopping_items": {"id", "list_id", "title", "added_by", "bought_by", "is_done", "created_at", "updated_at"},
-        "events": {"id", "family_id", "created_by", "title", "event_date", "event_time", "is_family", "created_at"},
+        "events": {"id", "family_id", "created_by", "creator_user_id", "participant_user_id", "title", "event_type", "description", "event_date", "event_time", "is_family", "created_at"},
         "expenses": {"id", "family_id", "created_by", "actor_id", "operation_type", "amount", "category", "subcategory", "comment", "created_at"},
         "activity_log": {"id", "family_id", "actor_id", "action_type", "details", "created_at"},
         "user_states": {"telegram_id", "state", "payload", "updated_at"},
@@ -258,13 +264,19 @@ def init_db() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 family_id INTEGER NOT NULL,
                 created_by INTEGER NOT NULL,
+                creator_user_id INTEGER,
+                participant_user_id INTEGER,
                 title TEXT NOT NULL,
+                event_type TEXT,
+                description TEXT,
                 event_date TEXT NOT NULL,
                 event_time TEXT,
                 is_family INTEGER NOT NULL DEFAULT 1,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE CASCADE,
-                FOREIGN KEY (created_by) REFERENCES users(telegram_id) ON DELETE CASCADE
+                FOREIGN KEY (created_by) REFERENCES users(telegram_id) ON DELETE CASCADE,
+                FOREIGN KEY (creator_user_id) REFERENCES users(telegram_id) ON DELETE SET NULL,
+                FOREIGN KEY (participant_user_id) REFERENCES users(telegram_id) ON DELETE SET NULL
             );
 
             CREATE TABLE IF NOT EXISTS expenses (
