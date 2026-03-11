@@ -27,7 +27,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             family = family_service.join_family(update.effective_user.id, invite_code)
             if family:
                 activity_service.log(family["id"], update.effective_user.id, "family_join", "присоединился по ссылке")
-                states_repo.set_state(update.effective_user.id, AWAITING_FAMILY_ROLE)
+                states_repo.set_state(
+                    update.effective_user.id,
+                    AWAITING_FAMILY_ROLE,
+                    {"mode": "set_role", "target": update.effective_user.id, "source": "onboarding"},
+                )
                 await update.message.reply_text(
                     f"Вы в семье «{family['name']}» ✅\nКак вас подписать в семье?",
                     reply_markup=family_role_keyboard(),
