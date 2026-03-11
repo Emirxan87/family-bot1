@@ -7,12 +7,15 @@ class ShoppingRepo:
     def ensure_default_lists(self, family_id: int, created_by: int | None = None) -> None:
         with get_conn() as conn:
             for name in DEFAULT_LISTS:
+                existing = conn.execute(
+                    "SELECT id FROM shopping_lists WHERE family_id = ? AND name = ? LIMIT 1",
+                    (family_id, name),
+                ).fetchone()
+                if existing:
+                    continue
+
                 conn.execute(
-                    """
-                    INSERT INTO shopping_lists(family_id, name, created_by)
-                    VALUES (?, ?, ?)
-                    ON CONFLICT(family_id, name) DO NOTHING
-                    """,
+                    "INSERT INTO shopping_lists(family_id, name, created_by) VALUES (?, ?, ?)",
                     (family_id, name, created_by),
                 )
 

@@ -89,10 +89,38 @@ def _ensure_users_full_name(conn: sqlite3.Connection, applied_migrations: list[s
     applied_migrations.append("users.full_name")
 
 
+def _ensure_shopping_items_title(conn: sqlite3.Connection, applied_migrations: list[str]) -> None:
+    if not _table_exists(conn, "shopping_items") or _column_exists(conn, "shopping_items", "title"):
+        return
+
+    has_legacy_name = _column_exists(conn, "shopping_items", "name")
+    conn.execute("ALTER TABLE shopping_items ADD COLUMN title TEXT")
+
+    if has_legacy_name:
+        conn.execute(
+            """
+            UPDATE shopping_items
+            SET title = COALESCE(NULLIF(TRIM(name), ''), 'Без названия')
+            WHERE title IS NULL OR TRIM(title) = ''
+            """
+        )
+    else:
+        conn.execute(
+            """
+            UPDATE shopping_items
+            SET title = 'Без названия'
+            WHERE title IS NULL OR TRIM(title) = ''
+            """
+        )
+
+    applied_migrations.append("shopping_items.title")
+
+
 def _run_migrations(conn: sqlite3.Connection) -> list[str]:
     applied_migrations: list[str] = []
 
     # shopping_items (legacy compatibility)
+    _ensure_shopping_items_title(conn, applied_migrations)
     _ensure_column(conn, "shopping_items", "added_by", "INTEGER", applied_migrations)
     _ensure_column(conn, "shopping_items", "bought_by", "INTEGER", applied_migrations)
     _ensure_column(conn, "shopping_items", "is_done", "INTEGER NOT NULL DEFAULT 0", applied_migrations)
@@ -109,11 +137,13 @@ def _run_migrations(conn: sqlite3.Connection) -> list[str]:
     _ensure_timestamp_column(conn, "shopping_lists", "created_at", applied_migrations)
 
     # events
+    _ensure_column(conn, "events", "created_by", "INTEGER", applied_migrations)
     _ensure_column(conn, "events", "event_time", "TEXT", applied_migrations)
     _ensure_column(conn, "events", "is_family", "INTEGER NOT NULL DEFAULT 1", applied_migrations)
     _ensure_timestamp_column(conn, "events", "created_at", applied_migrations)
 
     # expenses
+    _ensure_column(conn, "expenses", "created_by", "INTEGER", applied_migrations)
     _ensure_column(conn, "expenses", "comment", "TEXT", applied_migrations)
     _ensure_timestamp_column(conn, "expenses", "created_at", applied_migrations)
 
