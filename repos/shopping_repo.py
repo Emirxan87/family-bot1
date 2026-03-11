@@ -51,6 +51,22 @@ class ShoppingRepo:
                 (list_id,),
             ).fetchall()
 
+    def get_visible_items(self, list_id: int):
+        with get_conn() as conn:
+            return conn.execute(
+                """
+                SELECT i.*, a.full_name AS added_name, b.full_name AS bought_name, TRIM(i.title) AS display_title
+                FROM shopping_items i
+                LEFT JOIN users a ON a.telegram_id = i.added_by
+                LEFT JOIN users b ON b.telegram_id = i.bought_by
+                WHERE i.list_id = ?
+                  AND TRIM(i.title) != ''
+                  AND TRIM(i.title) != 'Без названия'
+                ORDER BY i.is_done, i.id DESC
+                """,
+                (list_id,),
+            ).fetchall()
+
     def toggle_item(self, item_id: int, user_id: int):
         with get_conn() as conn:
             row = conn.execute("SELECT * FROM shopping_items WHERE id = ?", (item_id,)).fetchone()
@@ -67,6 +83,43 @@ class ShoppingRepo:
                 (new_done, bought_by, item_id),
             )
             return {"item": row, "is_done": new_done}
+
+    def mark_all_done(self, list_id: int, user_id: int) -> int:
+        with get_conn() as conn:
+            cur = conn.execute(
+                """
+                UPDATE shopping_items
+                SET is_done = 1, bought_by = ?, updated_at=CURRENT_TIMESTAMP
+                WHERE list_id = ? AND is_done = 0
+                """,
+                (user_id, list_id),
+            )
+            return cur.rowcount
+
+    def restore_all_active(self, list_id: int) -> int:
+        with get_conn() as conn:
+            cur = conn.execute(
+                """
+                UPDATE shopping_items
+                SET is_done = 0, bought_by = NULL, updated_at=CURRENT_TIMESTAMP
+                WHERE list_id = ? AND is_done = 1
+                """,
+                (list_id,),
+            )
+            return cur.rowcount
+
+    def clear_done(self, list_id: int) -> int:
+        with get_conn() as conn:
+            cur = conn.execute(
+                "DELETE FROM shopping_items WHERE list_id = ? AND is_done = 1",
+                (list_id,),
+            )
+            return cur.rowcount
+
+    def clear_list(self, list_id: int) -> int:
+        with get_conn() as conn:
+            cur = conn.execute("DELETE FROM shopping_items WHERE list_id = ?", (list_id,))
+            return cur.rowcount
 
     def get_item_by_id(self, item_id: int):
         with get_conn() as conn:

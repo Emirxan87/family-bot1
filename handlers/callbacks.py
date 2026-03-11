@@ -1,14 +1,13 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from keyboards.shopping import items_inline
+from keyboards.shopping import items_inline, shopping_list_actions_keyboard
 from repos.shopping_repo import ShoppingRepo
 from repos.states_repo import StatesRepo
 from repos.users_repo import UsersRepo
 from services.activity_service import ActivityService
 from services.notification_service import NotificationService
 from services.shopping_service import ShoppingService
-from states import ADDING_SHOPPING_ITEM
 
 shopping_service = ShoppingService()
 shopping_repo = ShoppingRepo()
@@ -27,12 +26,15 @@ async def handle_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data.startswith("shop:list:"):
         list_id = int(data.split(":")[-1])
-        items = shopping_repo.get_items(list_id)
-        states_repo.set_state(user_id, ADDING_SHOPPING_ITEM, {"list_id": list_id})
+        items = shopping_service.get_visible_items(list_id)
+        states_repo.set_state(user_id, "shopping_selected_list", {"list_id": list_id})
         await query.message.reply_text(
             shopping_service.render_list(list_id), reply_markup=items_inline(items)
         )
-        await query.message.reply_text("Чтобы добавить товар, отправьте его названием одним сообщением.")
+        await query.message.reply_text(
+            "Управление списком:",
+            reply_markup=shopping_list_actions_keyboard(),
+        )
         return
 
     if data.startswith("shop:toggle:") and user and user["family_id"]:
@@ -40,7 +42,7 @@ async def handle_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
         item = shopping_service.toggle_item(item_id, user_id)
         if not item:
             return
-        list_items = shopping_repo.get_items(item["list_id"])
+        list_items = shopping_service.get_visible_items(item["list_id"])
         await query.message.edit_text(
             shopping_service.render_list(item["list_id"]), reply_markup=items_inline(list_items)
         )
