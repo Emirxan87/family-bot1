@@ -1,54 +1,190 @@
+import logging
+
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from keyboards.family import family_menu_keyboard
+from keyboards.family import family_manage_keyboard, family_role_keyboard, family_start_keyboard
 from keyboards.main_menu import main_menu_keyboard
-from repos.users_repo import UsersRepo
 from repos.states_repo import StatesRepo
 from services.activity_service import ActivityService
-from services.family_service import FamilyService
-from states import INVITING_FAMILY_MEMBER
+from services.family_service import FamilyService, ROLE_PRESETS
+from states import AWAITING_FAMILY_CUSTOM_ROLE, AWAITING_FAMILY_ROLE, INVITING_FAMILY_MEMBER
 
+logger = logging.getLogger(__name__)
 family_service = FamilyService()
 activity_service = ActivityService()
-users_repo = UsersRepo()
 states_repo = StatesRepo()
 
 
+def _invite_text(bot_username: str | None, family) -> str:
+    link = family_service.deep_link(bot_username, family["invite_code"])
+    return (
+        "Отправьте эту ссылку члену семьи:\n"
+        f"{link}\n\n"
+        "Если ссылка не сработает, можно ввести код:\n"
+        f"{family['invite_code']}"
+    )
+
+
+async def _show_no_family(update: Update):
+    await update.message.reply_text("У вас пока нет семьи", reply_markup=family_start_keyboard())
+
+
+async def _show_family(update: Update, bot_username: str | None, telegram_id: int):
+    user, family, members = family_service.user_family(telegram_id)
+    if not user or not family:
+        await _show_no_family(update)
+        return
+    lines = ["👨‍👩‍👧 Ваша семья", "", "Участники:"]
+    lines.extend([f"• {family_service.member_line(m)}" for m in members] or ["• Пока никого"])
+    lines.extend(["", _invite_text(bot_username, family)])
+    await update.message.reply_text("\n".join(lines), reply_markup=family_manage_keyboard())
+
+
 async def family_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Раздел семьи 👨‍👩‍👧‍👦", reply_markup=family_menu_keyboard())
+    try:
+        await _show_family(update, context.bot.username, update.effective_user.id)
+    except Exception:
+        logger.exception("Failed to open family menu")
+        await update.message.reply_text("Не получилось открыть раздел Семья")
 
 
 async def family_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message:
+        return
     text = (update.message.text or "").strip()
     user_id = update.effective_user.id
 
-    state, _ = states_repo.get_state(user_id)
-    if state == INVITING_FAMILY_MEMBER:
-        family = family_service.join_family(user_id, text)
-        states_repo.clear_state(user_id)
-        if not family:
-            await update.message.reply_text("Код не найден. Проверьте invite code и попробуйте снова.")
-            return
-        activity_service.log(family["id"], user_id, "family_join", "присоединился к семье")
-        await update.message.reply_text(
-            f"Добро пожаловать в семью «{family['name']}» 🤍", reply_markup=main_menu_keyboard()
-        )
-        return
+    try:
+        state, payload = states_repo.get_state(user_id)
 
-    if text == "➕ Создать семью":
-        created = family_service.create_family(user_id, "Наша семья")
-        activity_service.log(created["id"], user_id, "family_create", "создал(а) семью")
-        await update.message.reply_text(
-            f"Семья создана!\nInvite code: `{created['invite_code']}`",
-            parse_mode="Markdown",
-            reply_markup=family_menu_keyboard(),
-        )
-    elif text == "🔑 Вступить по коду":
-        states_repo.set_state(user_id, INVITING_FAMILY_MEMBER)
-        await update.message.reply_text("Введите invite code семьи (например, ABC123):")
-    elif text == "👥 Участники":
-        text_info = family_service.family_info_text(user_id)
-        await update.message.reply_text(text_info, parse_mode="Markdown", reply_markup=family_menu_keyboard())
-    elif text == "🏠 Главное меню":
-        await update.message.reply_text("Возвращаемся в главное меню", reply_markup=main_menu_keyboard())
+        if text == "⬅️ Назад":
+            states_repo.clear_state(user_id)
+            await update.message.reply_text("Главное меню", reply_markup=main_menu_keyboard())
+            return
+
+        if state == INVITING_FAMILY_MEMBER:
+            family = family_service.join_family(user_id, text)
+            states_repo.clear_state(user_id)
+            if not family:
+                await update.message.reply_text("Код не найден. Попробуйте ещё раз.")
+                return
+            activity_service.log(family["id"], user_id, "family_join", "присоединился к семье")
+            states_repo.set_state(user_id, AWAITING_FAMILY_ROLE, {"mode": "set_role", "target": user_id})
+            await update.message.reply_text("Как вас подписать в семье?", reply_markup=family_role_keyboard())
+            return
+
+        if state == AWAITING_FAMILY_ROLE and payload.get("mode") == "choose_member":
+            _, family, members = family_service.user_family(user_id)
+            if not family:
+                states_repo.clear_state(user_id)
+                await _show_no_family(update)
+                return
+            if not text.isdigit() or not (1 <= int(text) <= len(members)):
+                await update.message.reply_text("Введите номер участника")
+                return
+            member = members[int(text) - 1]
+            if member["telegram_id"] != user_id and not family_service.is_admin(user_id):
+                states_repo.clear_state(user_id)
+                await update.message.reply_text("Можно менять только свою роль")
+                return
+            if member["telegram_id"] == user_id:
+                states_repo.set_state(user_id, AWAITING_FAMILY_ROLE, {"mode": "set_role", "target": user_id})
+                await update.message.reply_text("Выберите роль", reply_markup=family_role_keyboard())
+                return
+            states_repo.set_state(user_id, AWAITING_FAMILY_ROLE, {"mode": "member_actions", "target": member["telegram_id"]})
+            await update.message.reply_text("Действия: ✏️ Изменить роль / 👑 Назначить админом / 🗑 Удалить из семьи")
+            return
+
+        if state == AWAITING_FAMILY_ROLE and payload.get("mode") == "member_actions":
+            target = payload.get("target")
+            if text == "✏️ Изменить роль":
+                states_repo.set_state(user_id, AWAITING_FAMILY_ROLE, {"mode": "set_role", "target": target})
+                await update.message.reply_text("Выберите роль", reply_markup=family_role_keyboard())
+                return
+            if text == "👑 Назначить админом":
+                family_service.users_repo.set_admin(target, True)
+                states_repo.clear_state(user_id)
+                await update.message.reply_text("Участник теперь админ ✅", reply_markup=family_manage_keyboard())
+                return
+            if text == "🗑 Удалить из семьи":
+                family_service.users_repo.remove_from_family(target)
+                states_repo.clear_state(user_id)
+                await update.message.reply_text("Участник удален из семьи", reply_markup=family_manage_keyboard())
+                return
+
+        if state == AWAITING_FAMILY_ROLE and payload.get("mode") == "set_role":
+            target = payload.get("target", user_id)
+            if text == "✏️ Свое название":
+                states_repo.set_state(user_id, AWAITING_FAMILY_CUSTOM_ROLE, {"target": target})
+                await update.message.reply_text("Напишите роль: например Тетя")
+                return
+            role_data = ROLE_PRESETS.get(text)
+            if role_data:
+                family_service.update_role(target, role_data[0], role_data[1])
+                states_repo.clear_state(user_id)
+                await update.message.reply_text("Роль обновлена ✅", reply_markup=family_manage_keyboard())
+                return
+
+        if state == AWAITING_FAMILY_CUSTOM_ROLE:
+            target = payload.get("target", user_id)
+            role = text[:40]
+            if not role:
+                await update.message.reply_text("Напишите короткое название роли")
+                return
+            family_service.update_role(target, "custom", role)
+            states_repo.clear_state(user_id)
+            await update.message.reply_text("Роль обновлена ✅", reply_markup=family_manage_keyboard())
+            return
+
+        if text == "➕ Создать семью":
+            created = family_service.create_family(user_id, "Наша семья")
+            activity_service.log(created["id"], user_id, "family_create", "создал(а) семью")
+            await _show_family(update, context.bot.username, user_id)
+            return
+
+        if text in {"🔗 Вступить по ссылке/коду", "🔑 Вступить по коду"}:
+            states_repo.set_state(user_id, INVITING_FAMILY_MEMBER)
+            await update.message.reply_text("Введите код приглашения")
+            return
+
+        if text == "➕ Пригласить":
+            _, family, _ = family_service.user_family(user_id)
+            if not family:
+                await _show_no_family(update)
+                return
+            await update.message.reply_text(_invite_text(context.bot.username, family))
+            return
+
+        if text == "👥 Участники":
+            _, family, members = family_service.user_family(user_id)
+            if not family:
+                await _show_no_family(update)
+                return
+            lines = ["Участники:"] + [f"{i}. {family_service.member_line(m)}" for i, m in enumerate(members, 1)]
+            lines.append("\nВыберите номер участника")
+            states_repo.set_state(user_id, AWAITING_FAMILY_ROLE, {"mode": "choose_member"})
+            await update.message.reply_text("\n".join(lines), reply_markup=family_manage_keyboard())
+            return
+
+        if text == "✏️ Роли":
+            _, family, members = family_service.user_family(user_id)
+            if not family:
+                await _show_no_family(update)
+                return
+            lines = ["Кому поменять роль?"] + [f"{i}. {family_service.member_line(m)}" for i, m in enumerate(members, 1)]
+            states_repo.set_state(user_id, AWAITING_FAMILY_ROLE, {"mode": "choose_member"})
+            await update.message.reply_text("\n".join(lines), reply_markup=family_manage_keyboard())
+            return
+
+        if text == "🔑 Новый код и ссылка":
+            family = family_service.regenerate_invite(user_id)
+            if not family:
+                await update.message.reply_text("Только админ может обновить код")
+                return
+            await update.message.reply_text(_invite_text(context.bot.username, family))
+            return
+
+    except Exception:
+        logger.exception("Family router failure: user_id=%s text=%s", user_id, text)
+        await update.message.reply_text("Ошибка в разделе Семья. Попробуйте ещё раз.")

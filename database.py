@@ -130,6 +130,9 @@ def _run_migrations(conn: sqlite3.Connection) -> list[str]:
     # users
     _ensure_users_full_name(conn, applied_migrations)
     _ensure_column(conn, "users", "username", "TEXT", applied_migrations)
+    _ensure_column(conn, "users", "role_key", "TEXT NOT NULL DEFAULT 'custom'", applied_migrations)
+    _ensure_column(conn, "users", "role_label", "TEXT", applied_migrations)
+    _ensure_column(conn, "users", "is_admin", "INTEGER NOT NULL DEFAULT 0", applied_migrations)
     _ensure_timestamp_column(conn, "users", "created_at", applied_migrations)
 
     # shopping_lists
@@ -191,7 +194,7 @@ def _table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
 
 def _log_schema_health(conn: sqlite3.Connection) -> None:
     expected_columns = {
-        "users": {"telegram_id", "family_id", "full_name", "username", "created_at"},
+        "users": {"telegram_id", "family_id", "full_name", "username", "role_key", "role_label", "is_admin", "created_at"},
         "shopping_lists": {"id", "family_id", "name", "created_by", "created_at"},
         "shopping_items": {"id", "list_id", "title", "added_by", "bought_by", "is_done", "created_at", "updated_at"},
         "events": {"id", "family_id", "created_by", "creator_user_id", "participant_user_id", "title", "event_type", "description", "event_date", "event_time", "is_family", "created_at"},
@@ -231,6 +234,9 @@ def init_db() -> None:
                 family_id INTEGER,
                 full_name TEXT NOT NULL,
                 username TEXT,
+                role_key TEXT NOT NULL DEFAULT 'custom',
+                role_label TEXT,
+                is_admin INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (family_id) REFERENCES families(id) ON DELETE SET NULL
             );

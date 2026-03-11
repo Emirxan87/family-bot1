@@ -9,25 +9,40 @@ class FamilyRepo:
         alphabet = string.ascii_uppercase + string.digits
         return "".join(secrets.choice(alphabet) for _ in range(6))
 
+    def _next_unique_code(self, conn) -> str:
+        code = self._invite_code()
+        while conn.execute("SELECT 1 FROM families WHERE invite_code = ?", (code,)).fetchone():
+            code = self._invite_code()
+        return code
+
     def create_family(self, name: str) -> dict:
         with get_conn() as conn:
-            code = self._invite_code()
-            while conn.execute(
-                "SELECT 1 FROM families WHERE invite_code = ?", (code,)
-            ).fetchone():
-                code = self._invite_code()
+            code = self._next_unique_code(conn)
             cur = conn.execute(
                 "INSERT INTO families(name, invite_code) VALUES(?, ?)", (name, code)
             )
             family_id = cur.lastrowid
             return {"id": family_id, "invite_code": code, "name": name}
 
+    def regenerate_invite_code(self, family_id: int):
+        with get_conn() as conn:
+            family = conn.execute("SELECT * FROM families WHERE id = ?", (family_id,)).fetchone()
+            if not family:
+                return None
+            code = self._next_unique_code(conn)
+            conn.execute("UPDATE families SET invite_code = ? WHERE id = ?", (code, family_id))
+            return conn.execute("SELECT * FROM families WHERE id = ?", (family_id,)).fetchone()
+
     def get_by_code(self, code: str):
+        if not code:
+            return None
         with get_conn() as conn:
             return conn.execute(
                 "SELECT * FROM families WHERE invite_code = ?", (code.upper(),)
             ).fetchone()
 
     def get_by_id(self, family_id: int):
+        if not family_id:
+            return None
         with get_conn() as conn:
             return conn.execute("SELECT * FROM families WHERE id = ?", (family_id,)).fetchone()

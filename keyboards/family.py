@@ -1,11 +1,36 @@
 from telegram import KeyboardButton, ReplyKeyboardMarkup
 
 
-def family_menu_keyboard():
+def family_start_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         [
-            [KeyboardButton("➕ Создать семью"), KeyboardButton("🔑 Вступить по коду")],
-            [KeyboardButton("👥 Участники"), KeyboardButton("🏠 Главное меню")],
+            [KeyboardButton("➕ Создать семью")],
+            [KeyboardButton("🔗 Вступить по ссылке/коду")],
+            [KeyboardButton("⬅️ Назад")],
+        ],
+        resize_keyboard=True,
+    )
+
+
+def family_manage_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        [
+            [KeyboardButton("➕ Пригласить"), KeyboardButton("👥 Участники")],
+            [KeyboardButton("✏️ Роли"), KeyboardButton("🔑 Новый код и ссылка")],
+            [KeyboardButton("⬅️ Назад")],
+        ],
+        resize_keyboard=True,
+    )
+
+
+def family_role_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        [
+            [KeyboardButton("👨 Папа"), KeyboardButton("👩 Мама")],
+            [KeyboardButton("👧 Дочка"), KeyboardButton("👦 Сын")],
+            [KeyboardButton("👵 Бабушка"), KeyboardButton("👴 Дедушка")],
+            [KeyboardButton("✏️ Свое название")],
+            [KeyboardButton("⬅️ Назад")],
         ],
         resize_keyboard=True,
     )

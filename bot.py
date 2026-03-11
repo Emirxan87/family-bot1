@@ -114,8 +114,12 @@ MENU_BUTTON_TEXTS = {
     "🧾 Активность семьи",
     "📍 Последние геопозиции",
     "➕ Создать семью",
+    "🔗 Вступить по ссылке/коду",
     "🔑 Вступить по коду",
+    "➕ Пригласить",
     "👥 Участники",
+    "✏️ Роли",
+    "🔑 Новый код и ссылка",
 }
 
 
@@ -164,7 +168,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await settings_menu(update, context)
     elif text == "🏠 Главное меню":
         await to_main_menu(update, context)
-    elif text in {"➕ Создать семью", "🔑 Вступить по коду", "👥 Участники"}:
+    elif text in {"➕ Создать семью", "🔗 Вступить по ссылке/коду", "🔑 Вступить по коду", "➕ Пригласить", "👥 Участники", "✏️ Роли", "🔑 Новый код и ссылка", "⬅️ Назад"}:
         await family_router(update, context)
     elif text in {
         "📋 Мои списки",
