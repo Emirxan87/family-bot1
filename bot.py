@@ -132,6 +132,8 @@ MENU_BUTTON_TEXTS = {
     "🔑 Новый код и ссылка",
 }
 
+EXPENSE_STATS_PERIOD_BUTTONS = {"📅 Сегодня", "🗓 7 дней", "📆 Месяц", "📊 Квартал", "📈 Год"}
+
 
 async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message:
@@ -158,14 +160,16 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ADDING_EVENT_PARTICIPANT_CUSTOM,
         VIEWING_EVENTS_BY_DATE,
     }
-    if state in finance_states and text in MENU_BUTTON_TEXTS:
+    if state in finance_states and text in MENU_BUTTON_TEXTS and not (
+        state == SELECTING_EXPENSE_STATS_PERIOD and text in EXPENSE_STATS_PERIOD_BUTTONS
+    ):
         states_repo.clear_state(user_id)
     if state == ADDING_SHOPPING_ITEM and (text in MENU_BUTTON_TEXTS or text.startswith("✅ Готово (")):
         states_repo.clear_state(user_id)
     if state in calendar_states and text in MENU_BUTTON_TEXTS and text not in {"❌ Отмена"}:
         states_repo.clear_state(user_id)
 
-    if state == SELECTING_EXPENSE_STATS_PERIOD and text in {"📅 Сегодня", "🗓 7 дней", "📆 Месяц", "📊 Квартал", "📈 Год"}:
+    if state == SELECTING_EXPENSE_STATS_PERIOD and text in EXPENSE_STATS_PERIOD_BUTTONS:
         await expenses_router(update, context)
         return
 
