@@ -104,6 +104,13 @@ async def _open_lists(update: Update, family_id: int):
     await update.message.reply_text("Выберите список:", reply_markup=lists_inline(lists))
 
 
+async def _request_list_for_list_action(update: Update, family_id: int, action_title: str):
+    await update.message.reply_text(
+        f"Чтобы выполнить «{action_title}», сначала выберите список 👇",
+        reply_markup=lists_inline(shopping_service.lists(family_id)),
+    )
+
+
 async def shopping_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Покупки 🛒", reply_markup=shopping_menu_keyboard())
 
@@ -219,7 +226,7 @@ async def shopping_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await _show_family_screen(update, family_id)
             return
         if not selected_list_id:
-            await update.message.reply_text("Сначала откройте список через «📋 Мои списки».")
+            await _request_list_for_list_action(update, family_id, "✅ Отметить всё купленным")
             return
         states_repo.set_state(
             user_id,
@@ -231,7 +238,7 @@ async def shopping_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text == "🗑 Очистить список":
         if not selected_list_id:
-            await update.message.reply_text("Сначала откройте список через «📋 Мои списки».")
+            await _request_list_for_list_action(update, family_id, "🗑 Очистить список")
             return
         states_repo.set_state(
             user_id,
@@ -262,7 +269,7 @@ async def shopping_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text == "♻️ Вернуть всё в активные":
         if not selected_list_id:
-            await update.message.reply_text("Сначала откройте список через «📋 Мои списки».")
+            await _request_list_for_list_action(update, family_id, "♻️ Вернуть всё в активные")
             return
         changed = shopping_service.restore_all_active(selected_list_id)
         await update.message.reply_text(f"Готово ✅ Вернул: {changed}")
@@ -272,7 +279,7 @@ async def shopping_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text == "🧹 Очистить купленные":
         if not selected_list_id:
-            await update.message.reply_text("Сначала откройте список через «📋 Мои списки».")
+            await _request_list_for_list_action(update, family_id, "🧹 Очистить купленные")
             return
         changed = shopping_service.clear_done(selected_list_id)
         await update.message.reply_text(f"Готово ✅ Удалил купленные: {changed}")
