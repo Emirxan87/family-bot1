@@ -52,7 +52,6 @@ async def shopping_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         item_id = shopping_service.add_item(list_id, text, user_id)
         item = shopping_repo.get_item_by_id(item_id)
-        states_repo.clear_state(user_id)
         activity_service.log(family_id, user_id, "shopping_add", f"добавил(а) товар: {text}")
         await notify_service.notify_family(
             context.bot,
