@@ -129,6 +129,33 @@ def _ensure_families_invite_code(conn: sqlite3.Connection, applied_migrations: l
     )
 
 
+def _ensure_families_core_columns(conn: sqlite3.Connection, applied_migrations: list[str]) -> None:
+    if not _table_exists(conn, "families"):
+        return
+
+    if not _column_exists(conn, "families", "name"):
+        conn.execute("ALTER TABLE families ADD COLUMN name TEXT")
+        conn.execute(
+            """
+            UPDATE families
+            SET name = 'Семья #' || id
+            WHERE name IS NULL OR TRIM(name) = ''
+            """
+        )
+        applied_migrations.append("families.name")
+
+    if not _column_exists(conn, "families", "created_at"):
+        conn.execute("ALTER TABLE families ADD COLUMN created_at TEXT")
+        conn.execute(
+            """
+            UPDATE families
+            SET created_at = CURRENT_TIMESTAMP
+            WHERE created_at IS NULL OR TRIM(created_at) = ''
+            """
+        )
+        applied_migrations.append("families.created_at")
+
+
 def _ensure_shopping_items_title(conn: sqlite3.Connection, applied_migrations: list[str]) -> None:
     if not _table_exists(conn, "shopping_items") or _column_exists(conn, "shopping_items", "title"):
         return
@@ -160,6 +187,7 @@ def _run_migrations(conn: sqlite3.Connection) -> list[str]:
     applied_migrations: list[str] = []
 
     # families
+    _ensure_families_core_columns(conn, applied_migrations)
     _ensure_families_invite_code(conn, applied_migrations)
 
     # shopping_items (legacy compatibility)
