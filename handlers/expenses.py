@@ -79,7 +79,7 @@ async def expenses_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if text in {"➖ Расход", "➕ Поступление", "➕ Ещё расход", "➕ Ещё поступление"}:
-        operation_type = "expense" if "Расход" in text else "income"
+        operation_type = "income" if "Поступление" in text else "expense"
         states_repo.set_state(user_id, ADDING_EXPENSE_CATEGORY, {"operation_type": operation_type})
         prompt = "Выберите категорию расхода:" if operation_type == "expense" else "Выберите категорию поступления:"
         await update.message.reply_text(prompt, reply_markup=categories_keyboard(operation_type))
