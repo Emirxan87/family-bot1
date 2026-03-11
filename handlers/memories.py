@@ -9,6 +9,7 @@ from services.activity_service import ActivityService
 from services.memory_service import MemoryService
 from services.notification_service import NotificationService
 from states import AWAITING_MEMORY_CAPTION, AWAITING_MEMORY_LOCATION, AWAITING_MEMORY_PHOTO
+from utils.display_name import preferred_display_name
 
 users_repo = UsersRepo()
 states_repo = StatesRepo()
@@ -88,7 +89,7 @@ async def memory_location_handler(update: Update, context: ContextTypes.DEFAULT_
         context.bot,
         user["family_id"],
         user_id,
-        f"📸 {user['full_name']} поделился(ась) новым моментом",
+        f"📸 {preferred_display_name(user)} поделился(ась) новым моментом",
     )
     await update.message.reply_text("Сохранил момент в семейной ленте 💛", reply_markup=memories_menu_keyboard())
     await update.message.reply_photo(payload.get("photo_file_id"), caption=_build_saved_caption(result))

@@ -6,6 +6,7 @@ from repos.location_repo import LocationRepo
 from repos.users_repo import UsersRepo
 from services.activity_service import ActivityService
 from services.notification_service import NotificationService
+from utils.display_name import preferred_display_name
 
 users_repo = UsersRepo()
 location_repo = LocationRepo()
@@ -45,7 +46,7 @@ async def settings_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         lines = ["📍 Последние геопозиции:"]
         for r in rows:
-            lines.append(f"• {r['full_name']}: {r['latitude']:.5f}, {r['longitude']:.5f}")
+            lines.append(f"• {r['actor_name']}: {r['latitude']:.5f}, {r['longitude']:.5f}")
         await update.message.reply_text("\n".join(lines))
     elif text == "🏠 Главное меню":
         await update.message.reply_text("Главное меню", reply_markup=main_menu_keyboard())
@@ -64,6 +65,6 @@ async def location_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.bot,
         user["family_id"],
         user_id,
-        f"📍 {user['full_name']} поделился(ась) геопозицией: {lat:.5f}, {lon:.5f}",
+        f"📍 {preferred_display_name(user)} поделился(ась) геопозицией: {lat:.5f}, {lon:.5f}",
     )
     await update.message.reply_text("Спасибо! Геопозиция сохранена.")

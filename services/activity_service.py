@@ -14,5 +14,5 @@ class ActivityService:
             return "Пока активность пустая."
         lines = ["🧾 Последние действия:"]
         for row in rows:
-            lines.append(f"• {row['full_name']}: {row['details']}")
+            lines.append(f"• {row['actor_name']}: {row['details']}")
         return "\n".join(lines)

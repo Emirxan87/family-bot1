@@ -16,7 +16,7 @@ class LocationRepo:
         with get_conn() as conn:
             return conn.execute(
                 """
-                SELECT l.*, u.full_name
+                SELECT l.*, COALESCE(NULLIF(TRIM(u.role_label), ''), NULLIF(TRIM(u.full_name), ''), 'Участник') AS actor_name
                 FROM locations l JOIN users u ON u.telegram_id = l.user_id
                 WHERE l.family_id = ?
                 ORDER BY l.id DESC LIMIT ?
