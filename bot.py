@@ -41,6 +41,9 @@ from states import (
     ADDING_EXPENSE_COMMENT,
     ADDING_EXPENSE_SUBCATEGORY,
     ADDING_SHOPPING_ITEM,
+    AWAITING_FAMILY_CUSTOM_ROLE,
+    AWAITING_FAMILY_ROLE,
+    INVITING_FAMILY_MEMBER,
     VIEWING_EVENTS_BY_DATE,
 )
 
@@ -49,6 +52,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 states_repo = StatesRepo()
+
+FAMILY_STATES = {INVITING_FAMILY_MEMBER, AWAITING_FAMILY_ROLE, AWAITING_FAMILY_CUSTOM_ROLE}
 
 MENU_BUTTON_TEXTS = {
     "🛒 Покупки",
@@ -242,12 +247,19 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text in {"🧾 Активность семьи", "📍 Последние геопозиции"}:
         await settings_router(update, context)
     else:
+        if state in FAMILY_STATES:
+            await family_router(update, context)
+            return
+        if state == ADDING_SHOPPING_ITEM or (state and state.startswith("shopping_")):
+            await shopping_router(update, context)
+            return
+        if state in calendar_states:
+            await calendar_router(update, context)
+            return
+        if state in finance_states:
+            await expenses_router(update, context)
+            return
         await family_router(update, context)
-        await shopping_router(update, context)
-        await calendar_router(update, context)
-        await expenses_router(update, context)
-        await memories_router(update, context)
-        await settings_router(update, context)
 
 
 async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:

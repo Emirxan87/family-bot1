@@ -34,3 +34,14 @@ def family_role_keyboard() -> ReplyKeyboardMarkup:
         ],
         resize_keyboard=True,
     )
+
+
+def family_member_actions_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        [
+            [KeyboardButton("✏️ Изменить роль")],
+            [KeyboardButton("👑 Назначить админом"), KeyboardButton("🗑 Удалить из семьи")],
+            [KeyboardButton("⬅️ Назад")],
+        ],
+        resize_keyboard=True,
+    )
