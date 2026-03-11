@@ -58,9 +58,13 @@ MENU_BUTTON_TEXTS = {
     "👨‍👩‍👧‍👦 Семья",
     "⚙️ Ещё",
     "🏠 Главное меню",
+    "🛒 Что купить",
     "📋 Мои списки",
+    "📋 Открыть списки",
     "➕ Добавить товар",
     "✅ Отметить всё купленным",
+    "✅ Отметить несколько",
+    "↩ Назад",
     "♻️ Вернуть всё в активные",
     "🧹 Очистить купленные",
     "🗑 Очистить список",
@@ -149,7 +153,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }
     if state in finance_states and text in MENU_BUTTON_TEXTS:
         states_repo.clear_state(user_id)
-    if state == ADDING_SHOPPING_ITEM and text in MENU_BUTTON_TEXTS:
+    if state == ADDING_SHOPPING_ITEM and (text in MENU_BUTTON_TEXTS or text.startswith("✅ Готово (")):
         states_repo.clear_state(user_id)
     if state in calendar_states and text in MENU_BUTTON_TEXTS and text not in {"❌ Отмена"}:
         states_repo.clear_state(user_id)
@@ -171,16 +175,20 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text in {"➕ Создать семью", "🔗 Вступить по ссылке/коду", "🔑 Вступить по коду", "➕ Пригласить", "👥 Участники", "✏️ Роли", "🔑 Новый код и ссылка", "⬅️ Назад"}:
         await family_router(update, context)
     elif text in {
+        "🛒 Что купить",
         "📋 Мои списки",
+        "📋 Открыть списки",
         "➕ Добавить товар",
         "✅ Отметить всё купленным",
+        "✅ Отметить несколько",
+        "↩ Назад",
         "♻️ Вернуть всё в активные",
         "🧹 Очистить купленные",
         "🗑 Очистить список",
         "⬅️ Назад",
         "❌ Отмена",
         "✅ Подтвердить",
-    }:
+    } or text.startswith("✅ Готово ("):
         await shopping_router(update, context)
     elif text in {
         "➕ Добавить событие",
