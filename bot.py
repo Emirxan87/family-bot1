@@ -25,6 +25,12 @@ from handlers.memories import (
 from handlers.settings import location_handler, settings_menu, settings_router
 from handlers.shopping import shopping_menu, shopping_router
 from handlers.start import help_command, start, to_main_menu
+from keyboards.shopping import (
+    BTN_ADD_MORE,
+    BTN_MAIN_MENU_SHORT,
+    BTN_NEW_LIST,
+    BTN_OPEN_LIST,
+)
 from keyboards.main_menu import main_menu_keyboard
 from repos.states_repo import StatesRepo
 from states import (
@@ -64,10 +70,14 @@ MENU_BUTTON_TEXTS = {
     "👨‍👩‍👧‍👦 Семья",
     "⚙️ Ещё",
     "🏠 Главное меню",
+    BTN_MAIN_MENU_SHORT,
     "🛒 Что купить",
     "📋 Мои списки",
     "📋 Открыть списки",
     "➕ Добавить товар",
+    BTN_ADD_MORE,
+    BTN_OPEN_LIST,
+    BTN_NEW_LIST,
     "✅ Отметить всё купленным",
     "✅ Отметить несколько",
     "↩ Назад",
@@ -194,6 +204,9 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📋 Мои списки",
         "📋 Открыть списки",
         "➕ Добавить товар",
+        BTN_ADD_MORE,
+        BTN_OPEN_LIST,
+        BTN_NEW_LIST,
         "✅ Отметить всё купленным",
         "✅ Отметить несколько",
         "↩ Назад",
@@ -203,6 +216,7 @@ async def message_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "⬅️ Назад",
         "❌ Отмена",
         "✅ Подтвердить",
+        BTN_MAIN_MENU_SHORT,
     } or text.startswith("✅ Готово ("):
         await shopping_router(update, context)
     elif text in {

@@ -1,12 +1,32 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
 
+BTN_SHOPPING_SECTION = "🛒 Покупки"
+BTN_SHOPPING_HOME = "🛒 Что купить"
+BTN_MY_LISTS = "📋 Мои списки"
+BTN_OPEN_LISTS = "📋 Открыть списки"
+BTN_ADD_ITEM = "➕ Добавить товар"
+BTN_ADD_MORE = "✅ Добавить ещё"
+BTN_OPEN_LIST = "📖 Открыть список"
+BTN_NEW_LIST = "🆕 Новый список"
+BTN_MARK_ALL_DONE = "✅ Отметить всё купленным"
+BTN_MARK_MANY = "✅ Отметить несколько"
+BTN_RESTORE_ALL = "♻️ Вернуть всё в активные"
+BTN_CLEAR_DONE = "🧹 Очистить купленные"
+BTN_CLEAR_LIST = "🗑 Очистить список"
+BTN_BACK = "⬅️ Назад"
+BTN_BACK_TO_FAMILY = "↩ Назад"
+BTN_CANCEL = "❌ Отмена"
+BTN_CONFIRM = "✅ Подтвердить"
+BTN_MAIN_MENU_SHORT = "🏠 В меню"
+BTN_MAIN_MENU_FULL = "🏠 Главное меню"
+
 
 def shopping_menu_keyboard():
     return ReplyKeyboardMarkup(
         [
-            [KeyboardButton("🛒 Что купить"), KeyboardButton("📋 Мои списки")],
-            [KeyboardButton("➕ Добавить товар")],
-            [KeyboardButton("🏠 В меню")],
+            [KeyboardButton(BTN_SHOPPING_HOME), KeyboardButton(BTN_MY_LISTS)],
+            [KeyboardButton(BTN_ADD_ITEM)],
+            [KeyboardButton(BTN_MAIN_MENU_SHORT)],
         ],
         resize_keyboard=True,
     )
@@ -15,11 +35,11 @@ def shopping_menu_keyboard():
 def shopping_list_actions_keyboard():
     return ReplyKeyboardMarkup(
         [
-            [KeyboardButton("➕ Добавить товар"), KeyboardButton("✅ Отметить всё купленным")],
-            [KeyboardButton("♻️ Вернуть всё в активные"), KeyboardButton("🧹 Очистить купленные")],
-            [KeyboardButton("🗑 Очистить список")],
-            [KeyboardButton("🛒 Что купить"), KeyboardButton("📋 Мои списки")],
-            [KeyboardButton("❌ Отмена"), KeyboardButton("🏠 В меню")],
+            [KeyboardButton(BTN_ADD_ITEM), KeyboardButton(BTN_MARK_ALL_DONE)],
+            [KeyboardButton(BTN_RESTORE_ALL), KeyboardButton(BTN_CLEAR_DONE)],
+            [KeyboardButton(BTN_CLEAR_LIST)],
+            [KeyboardButton(BTN_SHOPPING_HOME), KeyboardButton(BTN_MY_LISTS)],
+            [KeyboardButton(BTN_CANCEL), KeyboardButton(BTN_MAIN_MENU_SHORT)],
         ],
         resize_keyboard=True,
     )
@@ -28,9 +48,9 @@ def shopping_list_actions_keyboard():
 def shopping_family_actions_keyboard():
     return ReplyKeyboardMarkup(
         [
-            [KeyboardButton("✅ Отметить всё купленным"), KeyboardButton("✅ Отметить несколько")],
-            [KeyboardButton("➕ Добавить товар"), KeyboardButton("📋 Открыть списки")],
-            [KeyboardButton("↩ Назад"), KeyboardButton("🏠 В меню")],
+            [KeyboardButton(BTN_MARK_ALL_DONE), KeyboardButton(BTN_MARK_MANY)],
+            [KeyboardButton(BTN_ADD_ITEM), KeyboardButton(BTN_OPEN_LISTS)],
+            [KeyboardButton(BTN_BACK_TO_FAMILY), KeyboardButton(BTN_MAIN_MENU_SHORT)],
         ],
         resize_keyboard=True,
     )
@@ -39,8 +59,8 @@ def shopping_family_actions_keyboard():
 def shopping_bulk_actions_keyboard(selected_count: int):
     return ReplyKeyboardMarkup(
         [
-            [KeyboardButton(f"✅ Готово ({selected_count})"), KeyboardButton("✅ Отметить всё купленным")],
-            [KeyboardButton("❌ Отмена"), KeyboardButton("🛒 Что купить")],
+            [KeyboardButton(f"✅ Готово ({selected_count})"), KeyboardButton(BTN_MARK_ALL_DONE)],
+            [KeyboardButton(BTN_CANCEL), KeyboardButton(BTN_SHOPPING_HOME)],
         ],
         resize_keyboard=True,
     )
@@ -49,8 +69,8 @@ def shopping_bulk_actions_keyboard(selected_count: int):
 def shopping_confirm_keyboard():
     return ReplyKeyboardMarkup(
         [
-            [KeyboardButton("✅ Подтвердить"), KeyboardButton("❌ Отмена")],
-            [KeyboardButton("📋 Мои списки"), KeyboardButton("🏠 В меню")],
+            [KeyboardButton(BTN_CONFIRM), KeyboardButton(BTN_CANCEL)],
+            [KeyboardButton(BTN_MY_LISTS), KeyboardButton(BTN_MAIN_MENU_SHORT)],
         ],
         resize_keyboard=True,
     )
