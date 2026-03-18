@@ -69,6 +69,10 @@ async def memory_location_handler(update: Update, context: ContextTypes.DEFAULT_
     state, payload = states_repo.get_state(user_id)
     if state != AWAITING_MEMORY_LOCATION:
         return
+    if not user or not user["family_id"]:
+        states_repo.clear_state(user_id)
+        await update.message.reply_text("Сначала присоединитесь к семье.", reply_markup=main_menu_keyboard())
+        return
 
     lat = lon = None
     if update.message.location:

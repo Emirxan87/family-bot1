@@ -4,6 +4,13 @@ DEFAULT_LISTS = ["🛒 Общий", "🥦 Продукты", "💊 Аптека"
 
 
 class ShoppingRepo:
+    def get_list_for_family(self, list_id: int, family_id: int):
+        with get_conn() as conn:
+            return conn.execute(
+                "SELECT * FROM shopping_lists WHERE id = ? AND family_id = ?",
+                (list_id, family_id),
+            ).fetchone()
+
     def ensure_default_lists(self, family_id: int, created_by: int | None = None) -> None:
         with get_conn() as conn:
             for name in DEFAULT_LISTS:
@@ -204,4 +211,16 @@ class ShoppingRepo:
                 WHERE i.id = ?
                 """,
                 (item_id,),
+            ).fetchone()
+
+    def get_item_for_family(self, item_id: int, family_id: int):
+        with get_conn() as conn:
+            return conn.execute(
+                """
+                SELECT i.*, l.family_id, l.name AS list_name
+                FROM shopping_items i
+                JOIN shopping_lists l ON l.id = i.list_id
+                WHERE i.id = ? AND l.family_id = ?
+                """,
+                (item_id, family_id),
             ).fetchone()

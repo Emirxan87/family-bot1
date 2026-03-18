@@ -18,6 +18,9 @@ class ShoppingService:
     def get_visible_items(self, list_id: int):
         return self.repo.get_visible_items(list_id)
 
+    def list_belongs_to_family(self, list_id: int, family_id: int) -> bool:
+        return self.repo.get_list_for_family(list_id, family_id) is not None
+
     def render_list(self, list_id: int) -> str:
         lst = self.repo.get_list(list_id)
         items = self.repo.get_visible_items(list_id)
@@ -37,6 +40,13 @@ class ShoppingService:
     def toggle_item(self, item_id: int, user_id: int):
         self.repo.toggle_item(item_id, user_id)
         return self.repo.get_item_by_id(item_id)
+
+    def toggle_family_item(self, family_id: int, item_id: int, user_id: int):
+        item = self.repo.get_item_for_family(item_id, family_id)
+        if not item:
+            return None
+        self.repo.toggle_item(item_id, user_id)
+        return self.repo.get_item_for_family(item_id, family_id)
 
     def mark_all_done(self, list_id: int, user_id: int) -> int:
         return self.repo.mark_all_done(list_id, user_id)

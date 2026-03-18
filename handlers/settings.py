@@ -3,13 +3,16 @@ from telegram.ext import ContextTypes
 
 from keyboards.main_menu import main_menu_keyboard
 from repos.location_repo import LocationRepo
+from repos.states_repo import StatesRepo
 from repos.users_repo import UsersRepo
 from services.activity_service import ActivityService
 from services.notification_service import NotificationService
+from states import AWAITING_MEMORY_LOCATION
 from utils.display_name import preferred_display_name
 
 users_repo = UsersRepo()
 location_repo = LocationRepo()
+states_repo = StatesRepo()
 activity_service = ActivityService()
 notify_service = NotificationService()
 
@@ -54,6 +57,9 @@ async def settings_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def location_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    state, _ = states_repo.get_state(user_id)
+    if state == AWAITING_MEMORY_LOCATION:
+        return
     user = users_repo.get_user(user_id)
     if not user or not user["family_id"]:
         return

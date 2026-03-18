@@ -32,8 +32,20 @@ async def handle_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     user = users_repo.get_user(user_id)
 
+    if not user or not user["family_id"]:
+        await query.message.reply_text("Сначала присоединитесь к семье.")
+        return
+    family_id = user["family_id"]
+
     if data.startswith("shop:list:"):
-        list_id = int(data.split(":")[-1])
+        try:
+            list_id = int(data.split(":")[-1])
+        except ValueError:
+            await query.message.reply_text("Не удалось открыть список. Обновите экран.")
+            return
+        if not shopping_service.list_belongs_to_family(list_id, family_id):
+            await query.message.reply_text("Этот список недоступен.")
+            return
         items = shopping_service.get_visible_items(list_id)
         states_repo.set_state(user_id, "shopping_selected_list", {"list_id": list_id})
         await query.message.reply_text(
@@ -45,10 +57,15 @@ async def handle_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    if data.startswith("shop:toggle:") and user and user["family_id"]:
-        item_id = int(data.split(":")[-1])
-        item = shopping_service.toggle_item(item_id, user_id)
+    if data.startswith("shop:toggle:"):
+        try:
+            item_id = int(data.split(":")[-1])
+        except ValueError:
+            await query.message.reply_text("Эта кнопка устарела. Обновите список.")
+            return
+        item = shopping_service.toggle_family_item(family_id, item_id, user_id)
         if not item:
+            await query.message.reply_text("Товар не найден или уже недоступен.")
             return
         list_items = shopping_service.get_visible_items(item["list_id"])
         await query.message.edit_text(
@@ -65,9 +82,12 @@ async def handle_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    if data.startswith("shop:family_done:") and user and user["family_id"]:
-        family_id = user["family_id"]
-        item_id = int(data.split(":")[-1])
+    if data.startswith("shop:family_done:"):
+        try:
+            item_id = int(data.split(":")[-1])
+        except ValueError:
+            await query.message.reply_text("Эта кнопка устарела. Откройте раздел заново.")
+            return
         changed = shopping_service.mark_family_item_done(family_id, item_id, user_id)
         items = shopping_service.family_active_items(family_id)
         await query.message.edit_text(
@@ -92,9 +112,12 @@ async def handle_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text("Что дальше?", reply_markup=shopping_family_actions_keyboard())
         return
 
-    if data.startswith("shop:bulk_pick:") and user and user["family_id"]:
-        family_id = user["family_id"]
-        item_id = int(data.split(":")[-1])
+    if data.startswith("shop:bulk_pick:"):
+        try:
+            item_id = int(data.split(":")[-1])
+        except ValueError:
+            await query.message.reply_text("Эта кнопка устарела. Откройте раздел заново.")
+            return
         state, payload = states_repo.get_state(user_id)
         if state != "shopping_family_bulk":
             payload = {"selected_ids": []}
@@ -121,3 +144,5 @@ async def handle_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=shopping_bulk_actions_keyboard(len(selected_list)),
         )
         return
+
+    await query.message.reply_text("Кнопка устарела. Откройте раздел заново.")
