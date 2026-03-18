@@ -111,6 +111,10 @@ async def _request_list_for_list_action(update: Update, family_id: int, action_t
     )
 
 
+def _is_valid_family_list(list_id: int | None, family_id: int) -> bool:
+    return bool(list_id and shopping_service.list_belongs_to_family(list_id, family_id))
+
+
 async def shopping_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Покупки 🛒", reply_markup=shopping_menu_keyboard())
 
@@ -164,16 +168,20 @@ async def shopping_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     selected_list_id = payload.get("list_id")
 
     if text in {"➕ Добавить товар", "✅ Добавить ещё"}:
-        if selected_list_id:
+        if _is_valid_family_list(selected_list_id, family_id):
             states_repo.set_state(user_id, ADDING_SHOPPING_ITEM, {"list_id": selected_list_id})
             await update.message.reply_text("Напишите товар одним сообщением.")
             await update.message.reply_text("Можно отправить сразу следующий товар.", reply_markup=shopping_list_actions_keyboard())
         else:
+            if selected_list_id:
+                states_repo.set_state(user_id, "shopping_selected_list", {})
             await update.message.reply_text("Сначала выберите список:", reply_markup=lists_inline(shopping_service.lists(family_id)))
         return
 
     if text == "📖 Открыть список":
-        if not selected_list_id:
+        if not _is_valid_family_list(selected_list_id, family_id):
+            if selected_list_id:
+                states_repo.set_state(user_id, "shopping_selected_list", {})
             await update.message.reply_text("Сначала выберите список:", reply_markup=lists_inline(shopping_service.lists(family_id)))
             return
         states_repo.set_state(user_id, "shopping_selected_list", {"list_id": selected_list_id})
@@ -182,7 +190,7 @@ async def shopping_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if state == ADDING_SHOPPING_ITEM:
         list_id = payload.get("list_id")
-        if not list_id:
+        if not _is_valid_family_list(list_id, family_id):
             states_repo.clear_state(user_id)
             await update.message.reply_text("Список не выбран. Нажмите «📋 Мои списки».", reply_markup=shopping_menu_keyboard())
             return
@@ -225,7 +233,9 @@ async def shopping_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             states_repo.set_state(user_id, "shopping_family_view", {})
             await _show_family_screen(update, family_id)
             return
-        if not selected_list_id:
+        if not _is_valid_family_list(selected_list_id, family_id):
+            if selected_list_id:
+                states_repo.set_state(user_id, "shopping_selected_list", {})
             await _request_list_for_list_action(update, family_id, "✅ Отметить всё купленным")
             return
         states_repo.set_state(
@@ -237,7 +247,9 @@ async def shopping_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if text == "🗑 Очистить список":
-        if not selected_list_id:
+        if not _is_valid_family_list(selected_list_id, family_id):
+            if selected_list_id:
+                states_repo.set_state(user_id, "shopping_selected_list", {})
             await _request_list_for_list_action(update, family_id, "🗑 Очистить список")
             return
         states_repo.set_state(
@@ -251,7 +263,7 @@ async def shopping_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if state == "shopping_confirm_action" and text == "✅ Подтвердить":
         action = payload.get("action")
         list_id = payload.get("list_id")
-        if not list_id:
+        if not _is_valid_family_list(list_id, family_id):
             states_repo.clear_state(user_id)
             await update.message.reply_text("Сессия устарела.", reply_markup=shopping_menu_keyboard())
             return
@@ -268,7 +280,9 @@ async def shopping_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if text == "♻️ Вернуть всё в активные":
-        if not selected_list_id:
+        if not _is_valid_family_list(selected_list_id, family_id):
+            if selected_list_id:
+                states_repo.set_state(user_id, "shopping_selected_list", {})
             await _request_list_for_list_action(update, family_id, "♻️ Вернуть всё в активные")
             return
         changed = shopping_service.restore_all_active(selected_list_id)
@@ -278,7 +292,9 @@ async def shopping_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if text == "🧹 Очистить купленные":
-        if not selected_list_id:
+        if not _is_valid_family_list(selected_list_id, family_id):
+            if selected_list_id:
+                states_repo.set_state(user_id, "shopping_selected_list", {})
             await _request_list_for_list_action(update, family_id, "🧹 Очистить купленные")
             return
         changed = shopping_service.clear_done(selected_list_id)
